@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Emprendimientos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .filters-and-actions {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .filters form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .filters select, .filters button {
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .actions button {
+            padding: 8px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            margin-left: 10px;
+        }
+        .actions button:hover {
+            background-color: #45a049;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        @media (max-width: 768px) {
+            table, thead, tbody, th, td, tr {
+                display: block;
+            }
+            th, td {
+                padding: 10px;
+                box-sizing: border-box;
+                width: 100%;
+            }
+            th {
+                display: none;
+            }
+            td {
+                text-align: right;
+                position: relative;
+                padding-left: 50%;
+            }
+            td:before {
+                content: attr(data-label);
+                position: absolute;
+                left: 10px;
+                width: 45%;
+                font-weight: bold;
+                text-align: left;
+            }
+            .filters form {
+                flex-direction: column;
+            }
+            .filters select, .filters button {
+                width: 100%;
+            }
+            .actions button {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Lista de Emprendimientos</h1>
+    <div class="filters-and-actions">
+        <div class="filters">
+            <form method="GET" action="{% url 'simulacion:lista_emprendimientos' %}">
+                <select name="municipio">
+                    <option value="">Todos los municipios</option>
+                    {% for municipio in municipios %}
+                    <option value="{{ municipio.id_municipio }}" {% if municipio.id_municipio|stringformat:"s" == request.GET.municipio %}selected{% endif %}>
+                        {{ municipio.municipio }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="alcance">
+                    <option value="">Todos los alcances</option>
+                    {% for alcance in alcances %}
+                    <option value="{{ alcance.id_alcance }}" {% if alcance.id_alcance|stringformat:"s" == request.GET.alcance %}selected{% endif %}>
+                        {{ alcance.tipo }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="tematica">
+                    <option value="">Todas las temáticas</option>
+                    {% for tematica in tematicas %}
+                    <option value="{{ tematica.id_tematica }}" {% if tematica.id_tematica|stringformat:"s" == request.GET.tematica %}selected{% endif %}>
+                        {{ tematica.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Filtrar</button>
+            </form>
+        </div>
+        <div class="actions">
+            <button onclick="alert('Función de agregar en desarrollo')">Agregar nuevo emprendimiento</button>
+            <button onclick="alert('Función de modificar en desarrollo')">Modificar</button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Temática</th>
+                <th>Municipio</th>
+                <th>Alcance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for emprendimiento in emprendimientos %}
+            <tr>
+                <td data-label="Nombre">{{ emprendimiento.nombre_emprendimiento }}</td>
+                <td data-label="Descripción">{{ emprendimiento.descripcion|default:"Sin descripción" }}</td>
+                <td data-label="Temática">{{ emprendimiento.tematicas.all|join:", " }}</td>
+                <td data-label="Municipio">{{ emprendimiento.id_municipio_origen.municipio }}</td>
+                <td data-label="Alcance">{{ emprendimiento.id_alcance.tipo }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align: center;">No hay emprendimientos disponibles.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
