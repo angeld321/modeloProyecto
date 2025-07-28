@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Entorno Simulado{% endblock %}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .topbar {
+            background-color: #4CAF50;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .topbar a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            font-size: 16px;
+        }
+        .topbar a:hover {
+            background-color: #45a049;
+            border-radius: 4px;
+        }
+        .topbar .title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .topbar .nav-links {
+            display: flex;
+            gap: 10px;
+        }
+        .content {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        @media (max-width: 768px) {
+            .topbar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .topbar .nav-links {
+                flex-direction: column;
+                width: 100%;
+                margin-top: 10px;
+            }
+            .topbar a {
+                display: block;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <a href="{% url 'simulacion:home' %}" class="title">Entorno Simulado</a>
+        <div class="nav-links">
+            <a href="{% url 'simulacion:lista_emprendimientos' %}">Emprendimientos</a>
+            <a href="{% url 'simulacion:simulacion' %}">Simulación</a>
+            <a href="{% url 'simulacion:predicciones' %}">Predicciones</a>
+            <a href="{% url 'simulacion:evaluacion' %}">Evaluación</a>
+        </div>
+    </div>
+    <div class="content">
+        {% block content %}
+        {% endblock %}
+    </div>
+</body>
+</html>

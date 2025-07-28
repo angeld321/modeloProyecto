@@ -3,11 +3,16 @@ from django.http import HttpResponse
 from .models import Emprendimiento, Municipio, Tematica, Alcance
 
 
+def home(request):
+    return render(request, 'simulacion/home.html')
+
 def lista_emprendimientos(request):
     # Obtener filtros desde los parámetros GET
     municipio_id = request.GET.get('municipio')
     alcance_id = request.GET.get('alcance')
     tematica_id = request.GET.get('tematica')
+    sort_by = request.GET.get('sort_by', 'id_emprendimiento')  # Por defecto, ordenar por ID
+    sort_order = request.GET.get('sort_order', 'asc')  # Por defecto, ascendente
 
     # Consulta base con optimización
     emprendimientos = Emprendimiento.objects.all().select_related('id_municipio_origen', 'id_alcance').prefetch_related('tematicas')
@@ -20,6 +25,18 @@ def lista_emprendimientos(request):
     if tematica_id:
         emprendimientos = emprendimientos.filter(tematicas__id_tematica=tematica_id)
 
+    # Aplicar ordenación
+    if sort_by == 'id_emprendimiento':
+        if sort_order == 'desc':
+            emprendimientos = emprendimientos.order_by('-id_emprendimiento')
+        else:
+            emprendimientos = emprendimientos.order_by('id_emprendimiento')
+    elif sort_by == 'municipio':
+        if sort_order == 'desc':
+            emprendimientos = emprendimientos.order_by('-id_municipio_origen__municipio')
+        else:
+            emprendimientos = emprendimientos.order_by('id_municipio_origen__municipio')
+
     # Obtener opciones para los filtros
     municipios = Municipio.objects.all()
     alcances = Alcance.objects.all()
@@ -30,12 +47,16 @@ def lista_emprendimientos(request):
         'municipios': municipios,
         'alcances': alcances,
         'tematicas': tematicas,
+        'sort_by': sort_by,
+        'sort_order': sort_order,
     }
     return render(request, 'simulacion/emprendimientos.html', context)
-# Create your views here.
-def hello(requests):
-    return HttpResponse("<h1>Hello World</h1>")
 
+def simulacion(request):
+    return render(request, 'simulacion/simulacion.html')
 
-def about(request):
-    return HttpResponse("<h1>About</h1>")
+def predicciones(request):
+    return render(request, 'simulacion/predicciones.html')
+
+def evaluacion(request):
+    return render(request, 'simulacion/evaluacion.html')

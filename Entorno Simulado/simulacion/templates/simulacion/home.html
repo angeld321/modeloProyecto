@@ -1,0 +1,15 @@
+{% extends 'simulacion/topBar.html' %}
+
+{% block title %}Entorno Simulado - Inicio{% endblock %}
+
+{% block content %}
+<h1>Bienvenido al Entorno Simulado de DEAL</h1>
+<p>Este es el entorno simulado para la red social DEAL, donde puedes explorar los 80 emprendimientos, simular interacciones, realizar predicciones con GraphSAGE y evaluar resultados.</p>
+<p>Usa la barra de navegación para acceder a las diferentes secciones:</p>
+<ul>
+    <li><a href="{% url 'simulacion:lista_emprendimientos' %}">Emprendimientos</a>: Ver la lista de emprendimientos.</li>
+    <li><a href="{% url 'simulacion:simulacion' %}">Simulación</a>: Ejecutar simulaciones de interacciones.</li>
+    <li><a href="{% url 'simulacion:predicciones' %}">Predicciones</a>: Ver conexiones predichas por el modelo.</li>
+    <li><a href="{% url 'simulacion:evaluacion' %}">Evaluación</a>: Analizar la eficacia del modelo.</li>
+</ul>
+{% endblock %}
