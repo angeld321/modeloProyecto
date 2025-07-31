@@ -1,0 +1,99 @@
+{% extends 'simulacion/topBar.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Comentarios para {{ emprendimiento.nombre_emprendimiento }}</h2>
+    
+    <div class="publicaciones-list">
+        <h3>Publicaciones existentes:</h3>
+        
+        {% if publicaciones %}
+            <table class="publicaciones-table">
+                <thead>
+                    <tr>
+                        <th>ID Publicación</th>
+                        <th>Contenido</th>
+                        <th>Likes</th>  <!-- Nueva columna añadida -->
+                        <th>Comentarios</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pub in publicaciones %}
+                    <tr>
+                        <td>{{ pub.id_publicacion }}</td>
+                        <td>{{ pub.contenido }}</td>
+                        <td>{{ pub.n_likes|default:"0" }}</td>  <!-- Muestra los likes -->
+                        <td>{{ pub.num_comentarios }}</td>
+                        <td>
+                            <button class="btn-select" data-id="{{ pub.id_publicacion }}">Seleccionar</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="no-publicaciones">
+                <p>No hay publicaciones para este emprendimiento.</p>
+                <a href="{% url 'simulacion:publicaciones' emprendimiento.id_emprendimiento %}" class="btn btn-primary">
+                    Agregar Publicaciones
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .container {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+    .publicaciones-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .publicaciones-table th, .publicaciones-table td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+    }
+    .publicaciones-table th {
+        background-color: #f2f2f2;
+    }
+    .publicaciones-table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    .publicaciones-table tr:hover {
+        background-color: #f1f1f1;
+    }
+    .btn-select {
+        padding: 8px 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn-select:hover {
+        background-color: #45a049;
+    }
+    .no-publicaciones {
+        text-align: center;
+        padding: 20px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
+</style>
+
+<script>
+document.querySelectorAll('.btn-select').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const idPublicacion = this.getAttribute('data-id');
+        // Aquí puedes implementar la lógica para manejar la selección
+        alert('Publicación seleccionada: ' + idPublicacion);
+    });
+});
+</script>
+{% endblock %}

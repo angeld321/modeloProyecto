@@ -1,0 +1,85 @@
+{% extends 'simulacion/topBar.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Agregar Publicaciones para {{ emprendimiento.nombre_emprendimiento }}</h2>
+    
+    <div class="instructions">
+        <h3>Instrucciones:</h3>
+        <ol>
+            <li>Primero guarda nuevas publicaciones en la siguiente caja de texto de la siguiente manera:</li>
+            <li class="example">(publicación 1), (publicación 2), (publicación 3)</li>
+            <li>Cada publicación debe estar entre paréntesis y separada por comas</li>
+            <li>Si ya hay publicaciones, puedes pasar a comentarios usando el botón inferior</li>
+            <li>Los likes de cada publicación se generan automaticamente</li>
+        </ol>
+    </div>
+    
+    <form method="post" action="{% url 'simulacion:guardar_publicaciones' %}">
+        {% csrf_token %}
+        <input type="hidden" name="id_emprendimiento" value="{{ emprendimiento.id_emprendimiento }}">
+        
+        <div class="form-group">
+            <textarea id="publicaciones" name="publicaciones" rows="10" class="form-control" 
+                      placeholder="Ejemplo: (Hoy tenemos promoción especial), (Nuevos productos disponibles)"></textarea>
+        </div>
+        
+        <div class="actions">
+            <button type="submit" class="btn btn-primary">Guardar Publicaciones</button>
+            <a href="{% url 'simulacion:comentarios' emprendimiento.id_emprendimiento %}" class="btn btn-secondary">
+                Ir a Comentarios
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .container {
+        max-width: 800px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+    .instructions {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .example {
+        font-family: monospace;
+        background-color: #e9ecef;
+        padding: 5px;
+        border-radius: 3px;
+        margin: 10px 0;
+    }
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .actions {
+        display: flex;
+        justify-content: space-between;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    .btn:hover {
+        opacity: 0.9;
+    }
+</style>
+{% endblock %}
