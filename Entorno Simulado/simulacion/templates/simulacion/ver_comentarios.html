@@ -1,0 +1,81 @@
+{% extends 'simulacion/topBar.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Comentarios para la Publicación #{{ publicacion.id_publicacion }}</h2>
+    <p><strong>Contenido:</strong> {{ publicacion.contenido }}</p>
+    
+    <div class="comentarios-list">
+        <h3>Comentarios existentes:</h3>
+        
+        {% if comentarios %}
+            <table class="comentarios-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Comentario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for com in comentarios %}
+                    <tr>
+                        <td>{{ com.id_comentario }}</td>
+                        <td>{{ com.comentario }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="no-comentarios">
+                <p>No hay comentarios para esta publicación.</p>
+                <a href="{% url 'simulacion:agregar_comentarios' publicacion.id_publicacion %}" class="btn btn-primary">
+                    Agregar Comentarios
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .container {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+    .comentarios-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .comentarios-table th, .comentarios-table td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+    }
+    .comentarios-table th {
+        background-color: #f2f2f2;
+    }
+    .comentarios-table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    .comentarios-table tr:hover {
+        background-color: #f1f1f1;
+    }
+    .no-comentarios {
+        text-align: center;
+        padding: 20px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
+    .btn {
+        padding: 8px 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends 'simulacion/topBar.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Agregar Comentarios para la Publicación #{{ publicacion.id_publicacion }}</h2>
+    
+    <div class="instructions">
+        <h3>Instrucciones:</h3>
+        <ol>
+            <li>Ingresa los comentarios en la siguiente caja de texto usando el formato:</li>
+            <li class="example">(comentario 1), (comentario 2), (comentario 3)</li>
+            <li>Cada comentario debe estar entre paréntesis y separado por comas</li>
+        </ol>
+    </div>
+    
+    <form id="form-comentarios" method="post" action="{% url 'simulacion:guardar_comentarios' %}">
+        {% csrf_token %}
+        <input type="hidden" name="id_publicacion" value="{{ publicacion.id_publicacion }}">
+        
+        <div class="form-group">
+            <textarea id="comentarios" name="comentarios" rows="10" class="form-control" 
+                      placeholder="Ejemplo: (Excelente publicación), (Me gustaría más información)"></textarea>
+        </div>
+        
+        <div class="actions">
+            <button type="submit" class="btn btn-primary">Guardar Comentarios</button>
+            <a href="{% url 'simulacion:ver_comentarios' publicacion.id_publicacion %}" class="btn btn-secondary">
+                Ver Comentarios
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+    /* Mantén los mismos estilos de publicaciones.html */
+    .container {
+        max-width: 800px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+    .instructions {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .example {
+        font-family: monospace;
+        background-color: #e9ecef;
+        padding: 5px;
+        border-radius: 3px;
+        margin: 10px 0;
+    }
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .actions {
+        display: flex;
+        justify-content: space-between;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    .btn:hover {
+        opacity: 0.9;
+    }
+</style>
+
+<script>
+document.getElementById('form-comentarios').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const form = this;
+    const formData = new FormData(form);
+    
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if(data.status === 'success') {
+            alert(data.message);
+            // Cierra la ventana después de 1 segundo
+            setTimeout(() => {
+                window.close();
+            }, 1000);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error al guardar comentarios: ' + error.message);
+    });
+});
+</script>
+{% endblock %}

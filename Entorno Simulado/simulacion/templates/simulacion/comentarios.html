@@ -91,8 +91,8 @@
 document.querySelectorAll('.btn-select').forEach(btn => {
     btn.addEventListener('click', function() {
         const idPublicacion = this.getAttribute('data-id');
-        // Aquí puedes implementar la lógica para manejar la selección
-        alert('Publicación seleccionada: ' + idPublicacion);
+        // Usa la URL correcta con el namespace
+        window.open(`{% url 'simulacion:agregar_comentarios' 0 %}`.replace('0', idPublicacion), '_blank');
     });
 });
 </script>

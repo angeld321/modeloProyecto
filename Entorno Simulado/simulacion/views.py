@@ -146,6 +146,45 @@ def comentarios(request, id_emprendimiento):
         'publicaciones': publicaciones
     })
 
+
+def agregar_comentarios(request, id_publicacion):
+    publicacion = get_object_or_404(Publicacion, id_publicacion=id_publicacion)
+    return render(request, 'simulacion/agregar_comentarios.html', {
+        'publicacion': publicacion
+    })
+
+def guardar_comentarios(request):
+    if request.method == 'POST':
+        id_publicacion = request.POST.get('id_publicacion')
+        comentarios_texto = request.POST.get('comentarios', '')
+        
+        try:
+            publicacion = Publicacion.objects.get(id_publicacion=id_publicacion)
+            
+            # Procesar el texto para extraer los comentarios
+            comentarios = [com.strip() for com in comentarios_texto.split('),')]
+            comentarios = [com.replace('(', '').replace(')', '').strip() for com in comentarios if com.strip()]
+            
+            for contenido in comentarios:
+                Comentario.objects.create(
+                    comentario=contenido,
+                    id_publicacion=publicacion
+                )
+
+            return JsonResponse({'status': 'success', 'message': 'Comentarios guardados exitosamente'})
+        except Publicacion.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Publicación no encontrada'}, status=404)
+    
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+def ver_comentarios(request, id_publicacion):
+    publicacion = get_object_or_404(Publicacion, id_publicacion=id_publicacion)
+    comentarios = Comentario.objects.filter(id_publicacion=publicacion)
+    return render(request, 'simulacion/ver_comentarios.html', {
+        'publicacion': publicacion,
+        'comentarios': comentarios
+    })
+
 def predicciones(request):
     return render(request, 'simulacion/predicciones.html')
 
