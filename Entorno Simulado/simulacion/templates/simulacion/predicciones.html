@@ -77,6 +77,7 @@
     width: 70%;
     position: relative;
     border-right: 1px solid #ddd;
+    border: 1px solid #000; /* Borde negro cuadrado */
 }
 #insight-text {
     position: absolute;
@@ -104,7 +105,7 @@
 .search-container {
     position: relative;
     width: 60%;
-    margin-right: 10px;
+    margin-right: 20px; /* Aumentar margen para separar del botón de configuración */
 }
 #search-input {
     width: 100%;
@@ -247,7 +248,6 @@ const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
 const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
 const nCommunities = Number('{{ n_communities|escapejs }}');
 let selectedNode = null;
-let selectedNodeElement = null;
 
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
@@ -294,8 +294,8 @@ const svg = d3.select('#graph').append('svg').attr('width', '100%').attr('height
 const width = document.querySelector('.graph-container').offsetWidth;
 const height = document.querySelector('.graph-container').offsetHeight;
 const simulation = d3.forceSimulation()
-    .force('link', d3.forceLink().id(d => d.id).distance(150)) // Mayor distancia entre nodos
-    .force('charge', d3.forceManyBody().strength(-300)) // Mayor repulsión
+    .force('link', d3.forceLink().id(d => d.id).distance(150))
+    .force('charge', d3.forceManyBody().strength(-300))
     .force('center', d3.forceCenter(width / 2, height / 2));
 
 const zoom = d3.zoom()
@@ -346,7 +346,7 @@ function updateGraph() {
         })
         .on('mouseout', function(event, d) {
             if (d.id !== (selectedNode?.id_emprendimiento)) {
-                d3.select(this).attr('stroke', null);
+                d3.select(this).attr('stroke', null).attr('stroke-width', 0);
             }
             hideTooltip();
         })
@@ -407,7 +407,7 @@ function hideTooltip() {
 function selectNode(id) {
     selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
     updateSidebar();
-    updateGraph(); // Actualizar grafo para mostrar nodo seleccionado
+    updateGraph();
 }
 
 function updateSidebar() {
