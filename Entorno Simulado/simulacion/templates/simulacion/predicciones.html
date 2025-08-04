@@ -1,57 +1,43 @@
-<!-- predicciones.html -->
 {% extends 'simulacion/topBar.html' %}
 {% block title %}Entorno Simulado - Predicciones{% endblock %}
 {% block content %}
 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
-<!-- Barra Superior Fija -->
-<div class="top-bar">
-    <div class="search-container">
-        <input type="text" id="search-input" placeholder="Buscar por nombre, ID o temática...">
-        <div id="search-results" class="search-results"></div>
-    </div>
-    <div class="config-container">
-        <button onclick="toggleConfig()">⚙️ Configuración</button>
-        <div id="config-panel" class="config-panel" style="display: none;">
-            <div class="algo-tabs">
-                <button class="tab active" onclick="selectAlgo('recommendations')">🔍 Recomendaciones</button>
-                <button class="tab" onclick="selectAlgo('community')">🧩 Análisis de Comunidades</button>
-                <button class="tab" onclick="selectAlgo('clustering')">📊 Clusterización</button>
-            </div>
-            <div class="advanced-settings">
-                <h3>Ajustes Avanzados</h3>
-                <label>Rango de Seguidores:</label>
-                <input type="range" id="followers-range" min="0" max="{{ max_followers }}" value="0">
-                <span id="followers-value">0</span>
-                <label>Filtro Geográfico:</label>
-                <select id="municipio-filter" multiple>
-                    {% for municipio in municipios %}
-                    <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Área Principal -->
 <div class="main-container">
     <div class="graph-container">
+        <p id="insight-text">⚠️ Selecciona un emprendimiento para ver insights.</p>
         <div id="graph"></div>
-        <div class="legend">
-            <h4>Leyenda</h4>
-            <p><strong>Tamaño:</strong> Número de seguidores</p>
-            <p><strong>Color:</strong> Comunidad detectada</p>
-            <p><strong>Grosor de línea:</strong> Fuerza de conexión</p>
-        </div>
-        <div class="graph-controls">
-            <button onclick="zoomIn()">➕ Zoom In</button>
-            <button onclick="zoomOut()">➖ Zoom Out</button>
-            <button onclick="resetGraph()">🔄 Reiniciar</button>
-            <button onclick="exportGraph()">📥 Exportar</button>
-        </div>
     </div>
     <div class="sidebar">
+        <div class="top-controls">
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Buscar por nombre, ID o temática...">
+                <div id="search-results" class="search-results"></div>
+            </div>
+            <div class="config-container">
+                <button onclick="toggleConfig()">⚙️ Configuración</button>
+                <div id="config-panel" class="config-panel" style="display: none;">
+                    <div class="algo-tabs">
+                        <button class="tab active" onclick="selectAlgo('recommendations')">🔍 Recomendaciones</button>
+                        <button class="tab" onclick="selectAlgo('community')">🧩 Análisis de Comunidades</button>
+                        <button class="tab" onclick="selectAlgo('clustering')">📊 Clusterización</button>
+                    </div>
+                    <div class="advanced-settings">
+                        <h3>Ajustes Avanzados</h3>
+                        <label>Rango de Seguidores:</label>
+                        <input type="range" id="followers-range" min="0" max="{{ max_followers }}" value="0">
+                        <span id="followers-value">0</span>
+                        <label>Filtro Geográfico:</label>
+                        <select id="municipio-filter" multiple>
+                            {% for municipio in municipios %}
+                            <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="sidebar-tabs">
             <button class="tab active" onclick="showTab('summary')">Resumen</button>
             <button class="tab" onclick="showTab('recommendations')">Recomendaciones</button>
@@ -63,6 +49,7 @@
                 <p>Selecciona un emprendimiento en el grafo.</p>
             </div>
             <canvas id="radar-chart" style="max-height: 200px;"></canvas>
+            <button onclick="generateReport()" class="report-btn">📤 Generar Reporte PDF</button>
         </div>
         <div id="recommendations" class="tab-content">
             <h3>Recomendaciones Inteligentes</h3>
@@ -73,38 +60,51 @@
             <div id="community-content"></div>
             <canvas id="heatmap-chart" style="max-height: 200px;"></canvas>
         </div>
-    </div>
-</div>
-
-<!-- Barra Inferior -->
-<div class="bottom-bar">
-    <div class="insights">
-        <p id="insight-text">⚠️ Selecciona un emprendimiento para ver insights.</p>
-    </div>
-    <div class="quick-actions">
-        <button onclick="generateReport()">📤 Generar Reporte PDF</button>
-        <button onclick="saveSession()">💾 Guardar Sesión</button>
-        <button onclick="customizeView()">🎨 Personalizar Vista</button>
+        <div class="quick-actions">
+            <button onclick="saveSession()">💾 Guardar Sesión</button>
+            <button onclick="customizeView()">🎨 Personalizar Vista</button>
+        </div>
     </div>
 </div>
 
 <style>
-.top-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    background: #f2f2f2;
-    padding: 10px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    z-index: 1000;
+.main-container {
     display: flex;
-    justify-content: space-between;
+    height: calc(100vh - 50px);
+    margin-top: 50px;
+}
+.graph-container {
+    width: 70%;
+    position: relative;
+    border-right: 1px solid #ddd;
+}
+#insight-text {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(255,255,255,0.8);
+    padding: 5px 10px;
+    border-radius: 4px;
+    z-index: 10;
+}
+#graph {
+    width: 100%;
+    height: 100%;
+}
+.sidebar {
+    width: 30%;
+    padding: 10px;
+    overflow-y: auto;
+}
+.top-controls {
+    display: flex;
     align-items: center;
+    margin-bottom: 10px;
 }
 .search-container {
     position: relative;
-    width: 300px;
+    width: 60%;
+    margin-right: 10px;
 }
 #search-input {
     width: 100%;
@@ -144,6 +144,7 @@
     padding: 10px;
     width: 250px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1001;
 }
 .algo-tabs button {
     display: inline-block;
@@ -163,50 +164,6 @@
 #municipio-filter {
     width: 100%;
     padding: 5px;
-}
-.main-container {
-    display: flex;
-    margin-top: 60px;
-    height: calc(100vh - 100px);
-}
-.graph-container {
-    width: 60%;
-    position: relative;
-    border-right: 1px solid #ddd;
-}
-#graph {
-    width: 100%;
-    height: 100%;
-}
-.legend {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: rgba(255,255,255,0.8);
-    padding: 10px;
-    border-radius: 4px;
-}
-.graph-controls {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-}
-.graph-controls button {
-    margin: 5px;
-    padding: 8px;
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-.graph-controls button:hover {
-    background: #45a049;
-}
-.sidebar {
-    width: 40%;
-    padding: 10px;
-    overflow-y: auto;
 }
 .sidebar-tabs button {
     display: block;
@@ -244,20 +201,12 @@
 .rec-card button:hover {
     background: #45a049;
 }
-.bottom-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background: #f2f2f2;
-    padding: 10px;
-    box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.quick-actions {
+    margin-top: 10px;
+    text-align: right;
 }
-.quick-actions button {
-    margin: 0 5px;
+.quick-actions button, .report-btn {
+    margin: 5px;
     padding: 8px;
     background: #4CAF50;
     color: white;
@@ -265,7 +214,7 @@
     border-radius: 4px;
     cursor: pointer;
 }
-.quick-actions button:hover {
+.quick-actions button:hover, .report-btn:hover {
     background: #45a049;
 }
 @media (max-width: 768px) {
@@ -278,12 +227,14 @@
     .sidebar {
         margin-top: 20px;
     }
-    .bottom-bar {
+    .top-controls {
         flex-direction: column;
+        align-items: stretch;
     }
-    .quick-actions button {
+    .search-container {
         width: 100%;
-        margin: 5px 0;
+        margin-right: 0;
+        margin-bottom: 10px;
     }
 }
 </style>
@@ -296,6 +247,7 @@ const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
 const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
 const nCommunities = Number('{{ n_communities|escapejs }}');
 let selectedNode = null;
+let selectedNodeElement = null;
 
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
@@ -342,12 +294,20 @@ const svg = d3.select('#graph').append('svg').attr('width', '100%').attr('height
 const width = document.querySelector('.graph-container').offsetWidth;
 const height = document.querySelector('.graph-container').offsetHeight;
 const simulation = d3.forceSimulation()
-    .force('link', d3.forceLink().id(d => d.id).distance(100))
-    .force('charge', d3.forceManyBody().strength(-200))
+    .force('link', d3.forceLink().id(d => d.id).distance(150)) // Mayor distancia entre nodos
+    .force('charge', d3.forceManyBody().strength(-300)) // Mayor repulsión
     .force('center', d3.forceCenter(width / 2, height / 2));
+
+const zoom = d3.zoom()
+    .scaleExtent([0.5, 3])
+    .on('zoom', (event) => {
+        svg.selectAll('g').attr('transform', event.transform);
+    });
+svg.call(zoom);
 
 function updateGraph() {
     svg.selectAll('*').remove();
+    const g = svg.append('g');
     const minFollowers = +document.getElementById('followers-range').value;
     const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
     
@@ -360,28 +320,34 @@ function updateGraph() {
         nodeIds.has(link.source) && nodeIds.has(link.target)
     );
 
-    const links = svg.append('g').selectAll('line')
+    const links = g.append('g').selectAll('line')
         .data(filteredLinks)
         .enter().append('line')
         .attr('stroke', '#999')
         .attr('stroke-opacity', 0.6)
         .attr('stroke-width', d => Math.sqrt(d.weight));
 
-    const nodes = svg.append('g').selectAll('circle')
+    const nodes = g.append('g').selectAll('circle')
         .data(filteredNodes)
         .enter().append('circle')
         .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
         .attr('fill', d => d3.schemeCategory10[d.comunidad_louvain % 10])
+        .attr('stroke', d => d.id === (selectedNode?.id_emprendimiento) ? '#000' : null)
+        .attr('stroke-width', d => d.id === (selectedNode?.id_emprendimiento) ? 2 : 0)
         .call(d3.drag()
             .on('start', dragstarted)
             .on('drag', dragged)
             .on('end', dragended))
         .on('mouseover', function(event, d) {
-            d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
+            if (d.id !== (selectedNode?.id_emprendimiento)) {
+                d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
+            }
             showTooltip(d);
         })
-        .on('mouseout', function() {
-            d3.select(this).attr('stroke', null);
+        .on('mouseout', function(event, d) {
+            if (d.id !== (selectedNode?.id_emprendimiento)) {
+                d3.select(this).attr('stroke', null);
+            }
             hideTooltip();
         })
         .on('click', (event, d) => selectNode(d.id));
@@ -441,6 +407,7 @@ function hideTooltip() {
 function selectNode(id) {
     selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
     updateSidebar();
+    updateGraph(); // Actualizar grafo para mostrar nodo seleccionado
 }
 
 function updateSidebar() {
@@ -573,30 +540,6 @@ function saveSession() {
 
 function customizeView() {
     console.log('Personalizando vista...');
-}
-
-function zoomIn() {
-    svg.transition().call(d3.zoom().scaleBy, 1.2);
-}
-
-function zoomOut() {
-    svg.transition().call(d3.zoom().scaleBy, 0.8);
-}
-
-function resetGraph() {
-    simulation.alpha(1).restart();
-    updateGraph();
-}
-
-function exportGraph() {
-    const svgData = new XMLSerializer().serializeToString(svg.node());
-    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'graph.svg';
-    a.click();
-    URL.revokeObjectURL(url);
 }
 
 function showTab(tabId) {
