@@ -1,0 +1,81 @@
+﻿id_emprendimiento,nombre_emprendimiento,descripcion,redes_sociales,sitio_web,id_municipio_origen,id_alcance
+1,EcoHuertas Urbanas,Huertos comunitarios en zonas urbanas,"Facebook,Instagram",1,1,1
+2,Recicla Ando,Programa de reciclaje comunitario,"Instagram,TikTok",0,1,2
+3,Sabores Ancestrales,Rescate de cocina tradicional,"Instagram,TikTok",0,1,1
+4,Tejiendo Sueños,Tejidos artesanales con identidad cultural,"Facebook,Instagram",0,1,1
+5,Libros Viajeros,Bibliotecas móviles para niños,"Instagram,TikTok",0,1,1
+6,Turismo Vivencial,Experiencias turísticas comunitarias,"Instagram,TikTok,Facebook",1,1,2
+7,TecnoCampo,Tecnología para pequeños agricultores,"Facebook,Instagram",1,12,2
+8,Salud para Todos,Atención médica en zonas rurales,"Facebook,Instagram",1,12,2
+9,Deporte para la Paz,Talleres deportivos para jóvenes,"Facebook,YouTube",0,14,2
+10,Manos Creativas,Talleres de artesanías tradicionales,Instagram,0,11,1
+11,Agua Pura,Sistemas de filtrado de agua,Facebook,1,11,2
+12,Guardianes del Bosque,Conservación de áreas naturales,Instagram,0,5,2
+13,Energía Comunitaria,Paneles solares para comunidades,Facebook,1,5,2
+14,Raíces Indígenas,Preservación cultural indígena,Instagram,1,13,2
+15,Trueque Solidario,Sistema de intercambio comunitario,Facebook,0,8,1
+16,Café con Raíz,Producción de café orgánico con comunidades campesinas,"Instagram,Facebook",1,1,2
+17,Letras del Pueblo,Talleres de escritura creativa para niños,"Instagram,TikTok",0,1,1
+18,Mercado Justo,Plataforma de comercio local para pequeños productores,"Facebook,Instagram",1,1,1
+19,Senderos Vivos,Rutas ecológicas guiadas,"Instagram,Facebook,TikTok",1,1,2
+20,Aventuras Rurales,Turismo comunitario en zonas rurales,"Instagram,TikTok,Facebook",1,1,2
+21,Sonrisas Rurales,Campañas odontológicas móviles,"Facebook,Instagram",1,12,2
+22,Voces Ancestrales,Documentación de tradiciones orales indígenas,"Instagram,Facebook",1,12,2
+23,Jóvenes en Movimiento,Actividades deportivas para integración social,"Facebook,YouTube",0,12,2
+24,EcoLadrillos,Construcción con ladrillos reciclados,"Instagram,TikTok",0,11,1
+25,Hilos de Tradición,Ropa con bordados tradicionales,"Instagram,Facebook",0,15,1
+26,Sembrando Futuro,Capacitación en agricultura orgánica para jóvenes,Facebook,1,5,2
+27,Luz Verde,Lámparas solares para zonas sin electricidad,Facebook,1,5,2
+28,Cocinas del Campo,Conservas y mermeladas artesanales,"Instagram,TikTok",0,6,1
+29,Tejidos Andinos,Accesorios tejidos por mujeres indígenas,Instagram,0,7,1
+30,Agua Viva,Proyectos de captación de agua lluvia,"Facebook,Instagram",1,13,2
+31,Verde Vivo,Viveros comunitarios para reforestación,"Instagram,Facebook",1,1,2
+32,Cuentacuentos,Narración oral para niños en zonas rurales,"Instagram,TikTok",0,1,1
+33,Tienda Solidaria,Comercio de productos artesanales locales,"Facebook,Instagram",1,1,1
+34,Explora Naturaleza,Campamentos educativos en áreas naturales,"Instagram,TikTok,Facebook",1,1,2
+35,Memoria Viva,Archivo digital de tradiciones locales,"Instagram,Facebook",1,1,2
+36,Reutiliza Moda,Ropa reciclada con diseño local,"Instagram,TikTok",0,2,1
+37,Fútbol Comunidades,Torneos deportivos para integración juvenil,"Facebook,YouTube",0,16,2
+38,Manos Nasa,Productos tejidos por comunidades indígenas,Instagram,0,3,1
+39,TechLab Rural,Talleres de tecnología para comunidades,"Facebook,Instagram",1,4,2
+40,Vida Sana,Talleres de nutrición en escuelas rurales,"Facebook,Instagram",1,5,2
+41,Sabores del Huerto,Elaboración de mermeladas y conservas con frutas locales,"Instagram,TikTok",0,6,1
+42,Sol y Campo,Sistemas de energía solar para fincas,Facebook,1,7,2
+43,EcoRutas,Circuitos turísticos sostenibles,"Instagram,Facebook,TikTok",1,8,2
+44,Arcilla y Raíz,Cerámicas artesanales inspiradas en tradiciones,Instagram,0,9,1
+45,Fuentes Limpias,Purificación de agua para comunidades,"Facebook,Instagram",1,10,2
+46,Mujeres Tejedoras,Taller de empoderamiento femenino a través de tejidos,"Instagram,Facebook",1,1,1
+47,Raíces Inclusivas,Proyectos culturales con comunidades indígenas,"Instagram,Facebook",1,1,2
+48,Semillas de Cambio,Educación ambiental con enfoque en equidad,"Instagram,TikTok",1,1,2
+49,Abrazos de Colores,Actividades recreativas para niños en situación de vulnerabilidad,"Instagram,TikTok",0,1,1
+50,Puentes de Igualdad,Capacitación para personas con discapacidad,"Facebook,Instagram",1,12,2
+51,Derecho a Sonreír,Atención psicológica para víctimas de violencia,"Facebook,Instagram",1,12,2
+52,Voces Libres,Talleres de derechos humanos para jóvenes,"Instagram,TikTok",0,11,2
+53,Voz y Voto,Capacitación en liderazgo ciudadano,"Facebook,Instagram",1,14,2
+54,Ríos Vivos,Campañas contra la contaminación de ríos,"Instagram,Facebook,TikTok",1,5,2
+55,Tierra Justa,Defensa de territorios frente a proyectos extractivos,"Instagram,Facebook,TikTok",1,5,2
+56,EcoFeminista,Huerto urbano gestionado por mujeres,"Instagram,TikTok",0,2,1
+57,Manos Diversas,Artesanías elaboradas por comunidades vulnerables,Instagram,0,3,1
+58,Juntas Decidimos,Espacios de participación ciudadana para mujeres,"Facebook,Instagram",0,6,1
+59,Mujeres del Campo,Apoyo a agricultoras en técnicas sostenibles,"Instagram,Facebook",0,7,2
+60,Comunidad Activa,Foros comunitarios para la toma de decisiones,"Facebook,TikTok",1,8,1
+61,Arcoíris Popayán,Espacio seguro para la comunidad LGBTI con talleres de sensibilización en Popayán.,"Instagram,Facebook",1,1,1
+62,Raíces Afro,Promoción de la cultura afrocolombiana mediante talleres de percusión en Guapi.,"TikTok,Instagram",0,13,2
+63,Mujeres que tejen,Cooperativa de mujeres indígenas en Silvia que crean textiles tradicionales.,"Facebook,Instagram",0,2,1
+64,Voces Diversas,Apoyo a personas LGBTI en Totoró mediante asesorías psicológicas y sociales.,"Instagram,TikTok",0,3,1
+65,Herencia Negra,Festival de danza afrodescendiente para preservar tradiciones en Santander de Quilichao.,"Facebook,Twitter",1,12,2
+66,Feminismo Rural,Talleres de equidad de género para mujeres campesinas en Cajibío.,"Instagram,Facebook",0,4,1
+67,Inclusión Activa,Programas de capacitación laboral para personas con discapacidad en Piendamó.,"TikTok,Facebook",0,5,2
+68,Derechos para Todos,Campañas de educación en derechos humanos en El Tambo.,"Instagram,Twitter",1,6,1
+69,Afro Tambores,Escuela de música afrocolombiana para jóvenes en Patía.,"Facebook,Instagram",0,8,1
+70,Colores Libres,Eventos culturales LGBTI para promover la diversidad en Inzá.,"Instagram,TikTok",0,9,2
+71,Cultura Puracé,Rescate de tradiciones indígenas mediante talleres de artesanías en Puracé.,"Facebook,Instagram",0,10,1
+72,Juego por la Paz,Torneos de voleibol comunitarios para fomentar la inclusión en Timbío.,"TikTok,Instagram",0,11,1
+73,Mujeres en Red,Red de apoyo para mujeres emprendedoras en Guapi.,"Instagram,Facebook",1,13,2
+74,Afro Raíces,Talleres de cocina afrocolombiana para preservar la gastronomía en El Bordo.,"Facebook,TikTok",0,17,1
+75,Diversidad en Marcha,Marchas y actividades LGBTI para visibilizar derechos en Balboa.,"Instagram,Twitter",0,14,1
+76,Justicia Rural,Asesorías legales gratuitas sobre derechos humanos en La Sierra.,"Instagram,Facebook",1,15,2
+77,Mujeres del Maíz,Capacitaciones en agricultura sostenible para mujeres en Sucre.,"TikTok,Facebook",0,16,1
+78,Orgullo Afro,Espacio de empoderamiento afrodescendiente mediante talleres artísticos en Morales.,"Instagram,Facebook",0,7,1
+79,Incluye y Crea,Taller de artesanías inclusivo para personas con discapacidad en Popayán.,"Facebook,Twitter",0,1,1
+80,Vivas y Libres,Campañas feministas contra la violencia de género en Patía.,"Instagram,TikTok",1,8,2

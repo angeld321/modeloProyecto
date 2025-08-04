@@ -1,8 +1,611 @@
+<!-- predicciones.html -->
 {% extends 'simulacion/topBar.html' %}
-
 {% block title %}Entorno Simulado - Predicciones{% endblock %}
-
 {% block content %}
-<h1>Predicciones</h1>
-<p>En desarrollo: Aquí se mostrarán las conexiones predichas por el modelo GraphSAGE.</p>
+<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+<!-- Barra Superior Fija -->
+<div class="top-bar">
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="Buscar por nombre, ID o temática...">
+        <div id="search-results" class="search-results"></div>
+    </div>
+    <div class="config-container">
+        <button onclick="toggleConfig()">⚙️ Configuración</button>
+        <div id="config-panel" class="config-panel" style="display: none;">
+            <div class="algo-tabs">
+                <button class="tab active" onclick="selectAlgo('recommendations')">🔍 Recomendaciones</button>
+                <button class="tab" onclick="selectAlgo('community')">🧩 Análisis de Comunidades</button>
+                <button class="tab" onclick="selectAlgo('clustering')">📊 Clusterización</button>
+            </div>
+            <div class="advanced-settings">
+                <h3>Ajustes Avanzados</h3>
+                <label>Rango de Seguidores:</label>
+                <input type="range" id="followers-range" min="0" max="{{ max_followers }}" value="0">
+                <span id="followers-value">0</span>
+                <label>Filtro Geográfico:</label>
+                <select id="municipio-filter" multiple>
+                    {% for municipio in municipios %}
+                    <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Área Principal -->
+<div class="main-container">
+    <div class="graph-container">
+        <div id="graph"></div>
+        <div class="legend">
+            <h4>Leyenda</h4>
+            <p><strong>Tamaño:</strong> Número de seguidores</p>
+            <p><strong>Color:</strong> Comunidad detectada</p>
+            <p><strong>Grosor de línea:</strong> Fuerza de conexión</p>
+        </div>
+        <div class="graph-controls">
+            <button onclick="zoomIn()">➕ Zoom In</button>
+            <button onclick="zoomOut()">➖ Zoom Out</button>
+            <button onclick="resetGraph()">🔄 Reiniciar</button>
+            <button onclick="exportGraph()">📥 Exportar</button>
+        </div>
+    </div>
+    <div class="sidebar">
+        <div class="sidebar-tabs">
+            <button class="tab active" onclick="showTab('summary')">Resumen</button>
+            <button class="tab" onclick="showTab('recommendations')">Recomendaciones</button>
+            <button class="tab" onclick="showTab('community')">Comunidad</button>
+        </div>
+        <div id="summary" class="tab-content active">
+            <h3>Resumen del Emprendimiento</h3>
+            <div id="summary-content">
+                <p>Selecciona un emprendimiento en el grafo.</p>
+            </div>
+            <canvas id="radar-chart" style="max-height: 200px;"></canvas>
+        </div>
+        <div id="recommendations" class="tab-content">
+            <h3>Recomendaciones Inteligentes</h3>
+            <div id="recommendations-content"></div>
+        </div>
+        <div id="community" class="tab-content">
+            <h3>Análisis de Comunidad</h3>
+            <div id="community-content"></div>
+            <canvas id="heatmap-chart" style="max-height: 200px;"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Barra Inferior -->
+<div class="bottom-bar">
+    <div class="insights">
+        <p id="insight-text">⚠️ Selecciona un emprendimiento para ver insights.</p>
+    </div>
+    <div class="quick-actions">
+        <button onclick="generateReport()">📤 Generar Reporte PDF</button>
+        <button onclick="saveSession()">💾 Guardar Sesión</button>
+        <button onclick="customizeView()">🎨 Personalizar Vista</button>
+    </div>
+</div>
+
+<style>
+.top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: #f2f2f2;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.search-container {
+    position: relative;
+    width: 300px;
+}
+#search-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: white;
+    border: 1px solid #ddd;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+    z-index: 1001;
+}
+.search-results div {
+    padding: 8px;
+    cursor: pointer;
+}
+.search-results div:hover {
+    background: #f0f0f0;
+}
+.config-container {
+    position: relative;
+}
+.config-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    padding: 10px;
+    width: 250px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.algo-tabs button {
+    display: inline-block;
+    padding: 8px;
+    margin: 2px;
+    border: none;
+    background: #ddd;
+    cursor: pointer;
+}
+.algo-tabs button.active {
+    background: #4CAF50;
+    color: white;
+}
+.advanced-settings {
+    margin-top: 10px;
+}
+#municipio-filter {
+    width: 100%;
+    padding: 5px;
+}
+.main-container {
+    display: flex;
+    margin-top: 60px;
+    height: calc(100vh - 100px);
+}
+.graph-container {
+    width: 60%;
+    position: relative;
+    border-right: 1px solid #ddd;
+}
+#graph {
+    width: 100%;
+    height: 100%;
+}
+.legend {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(255,255,255,0.8);
+    padding: 10px;
+    border-radius: 4px;
+}
+.graph-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+.graph-controls button {
+    margin: 5px;
+    padding: 8px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.graph-controls button:hover {
+    background: #45a049;
+}
+.sidebar {
+    width: 40%;
+    padding: 10px;
+    overflow-y: auto;
+}
+.sidebar-tabs button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    background: #ddd;
+    cursor: pointer;
+    text-align: left;
+}
+.sidebar-tabs button.active {
+    background: #4CAF50;
+    color: white;
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+.rec-card {
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+}
+.rec-card button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.rec-card button:hover {
+    background: #45a049;
+}
+.bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #f2f2f2;
+    padding: 10px;
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.quick-actions button {
+    margin: 0 5px;
+    padding: 8px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.quick-actions button:hover {
+    background: #45a049;
+}
+@media (max-width: 768px) {
+    .main-container {
+        flex-direction: column;
+    }
+    .graph-container, .sidebar {
+        width: 100%;
+    }
+    .sidebar {
+        margin-top: 20px;
+    }
+    .bottom-bar {
+        flex-direction: column;
+    }
+    .quick-actions button {
+        width: 100%;
+        margin: 5px 0;
+    }
+}
+</style>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const graphData = JSON.parse('{{ graph_data|escapejs }}');
+const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
+const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
+const nCommunities = Number('{{ n_communities|escapejs }}');
+let selectedNode = null;
+
+const searchInput = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+    const query = searchInput.value.toLowerCase();
+    searchResults.innerHTML = '';
+    if (query.length < 2) {
+        searchResults.style.display = 'none';
+        return;
+    }
+    const results = emprendimientosData.filter(emp => 
+        emp.nombre_emprendimiento.toLowerCase().includes(query) ||
+        emp.id_emprendimiento.toString().includes(query) ||
+        emp.tematicas.some(t => t.toLowerCase().includes(query))
+    );
+    results.forEach(emp => {
+        const div = document.createElement('div');
+        div.innerHTML = `
+            <strong>${emp.nombre_emprendimiento}</strong> (ID: ${emp.id_emprendimiento})<br>
+            Seguidores: ${emp.seguidores || 0}, Municipio: ${emp.municipio}
+        `;
+        div.onclick = () => selectNode(emp.id_emprendimiento);
+        searchResults.appendChild(div);
+    });
+    searchResults.style.display = results.length ? 'block' : 'none';
+});
+
+function toggleConfig() {
+    const panel = document.getElementById('config-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function selectAlgo(algo) {
+    document.querySelectorAll('.algo-tabs button').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+document.getElementById('followers-range').addEventListener('input', (e) => {
+    document.getElementById('followers-value').textContent = e.target.value;
+    updateGraph();
+});
+
+const svg = d3.select('#graph').append('svg').attr('width', '100%').attr('height', '100%');
+const width = document.querySelector('.graph-container').offsetWidth;
+const height = document.querySelector('.graph-container').offsetHeight;
+const simulation = d3.forceSimulation()
+    .force('link', d3.forceLink().id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(width / 2, height / 2));
+
+function updateGraph() {
+    svg.selectAll('*').remove();
+    const minFollowers = +document.getElementById('followers-range').value;
+    const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
+    
+    const filteredNodes = graphData.nodes.filter(node => 
+        node.seguidores >= minFollowers &&
+        (selectedMunicipios.length === 0 || selectedMunicipios.includes(node.id_municipio_origen))
+    );
+    const nodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredLinks = graphData.links.filter(link => 
+        nodeIds.has(link.source) && nodeIds.has(link.target)
+    );
+
+    const links = svg.append('g').selectAll('line')
+        .data(filteredLinks)
+        .enter().append('line')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.6)
+        .attr('stroke-width', d => Math.sqrt(d.weight));
+
+    const nodes = svg.append('g').selectAll('circle')
+        .data(filteredNodes)
+        .enter().append('circle')
+        .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
+        .attr('fill', d => d3.schemeCategory10[d.comunidad_louvain % 10])
+        .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended))
+        .on('mouseover', function(event, d) {
+            d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
+            showTooltip(d);
+        })
+        .on('mouseout', function() {
+            d3.select(this).attr('stroke', null);
+            hideTooltip();
+        })
+        .on('click', (event, d) => selectNode(d.id));
+
+    simulation.nodes(filteredNodes).on('tick', () => {
+        links
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+        nodes
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y);
+    });
+
+    simulation.force('link').links(filteredLinks);
+}
+
+function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+}
+
+function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+}
+
+function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+}
+
+function showTooltip(d) {
+    const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .style('position', 'absolute')
+        .style('background', 'white')
+        .style('padding', '5px')
+        .style('border', '1px solid #ddd')
+        .html(`
+            <strong>${d.nombre_emprendimiento}</strong><br>
+            Seguidores: ${d.seguidores || 0}<br>
+            Popularidad: ${(d.total_likes || 0).toFixed(2)}<br>
+            Conectividad: ${d.degree_centrality.toFixed(2)}
+        `)
+        .style('left', (event.pageX + 10) + 'px')
+        .style('top', (event.pageY - 10) + 'px');
+}
+
+function hideTooltip() {
+    d3.select('.tooltip').remove();
+}
+
+function selectNode(id) {
+    selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
+    updateSidebar();
+}
+
+function updateSidebar() {
+    if (!selectedNode) return;
+
+    const summaryContent = document.getElementById('summary-content');
+    summaryContent.innerHTML = `
+        <p><strong>ID:</strong> ${selectedNode.id_emprendimiento}</p>
+        <p><strong>Nombre:</strong> ${selectedNode.nombre_emprendimiento}</p>
+        <p><strong>Descripción:</strong> ${selectedNode.descripcion || 'Sin descripción'}</p>
+        <p><strong>Seguidores:</strong> ${selectedNode.seguidores || 0}</p>
+        <p><strong>Municipio:</strong> ${selectedNode.municipio}</p>
+        <p><strong>Temáticas:</strong> ${selectedNode.tematicas.join(', ')}</p>
+    `;
+
+    const ctx = document.getElementById('radar-chart').getContext('2d');
+    if (ctx.chart) {
+        ctx.chart.destroy();
+    }
+    ctx.chart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['Popularidad', 'Conectividad', 'Diversidad Temática'],
+            datasets: [{
+                label: selectedNode.nombre_emprendimiento,
+                data: [
+                    (selectedNode.seguidores || 0) / Number('{{ max_followers|escapejs }}') * 100,
+                    (selectedNode.degree_centrality || 0) * 100,
+                    (selectedNode.tematicas.length || 0) / Number('{{ max_tematicas|escapejs }}') * 100
+                ],
+                fill: true,
+                backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                borderColor: '#4CAF50',
+                pointBackgroundColor: '#4CAF50'
+            }]
+        },
+        options: {
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+
+    fetch('/simulacion/recommend-emprendimientos/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const recContent = document.getElementById('recommendations-content');
+        recContent.innerHTML = data.recommendations.map(rec => `
+            <div class="rec-card">
+                <p><strong>${rec.nombre}</strong> (ID: ${rec.id})</p>
+                <p>Similitud: ${(rec.similitud * 100).toFixed(1)}%</p>
+                <p>Temáticas: ${rec.tematicas.join(', ')}</p>
+                <button onclick="viewConnection(${rec.id})">Ver Conexión</button>
+            </div>
+        `).join('');
+    });
+
+    const community = graphData.nodes.find(n => n.id === selectedNode.id_emprendimiento).comunidad_louvain;
+    const communityEmps = graphData.nodes.filter(n => n.comunidad_louvain === community);
+    const topEmps = communityEmps.sort((a, b) => b.betweenness_centrality - a.betweenness_centrality).slice(0, 5);
+    document.getElementById('community-content').innerHTML = `
+        <p><strong>Comunidad ${community}</strong> (${communityEmps.length} miembros)</p>
+        <p>Temáticas principales: ${selectedNode.tematicas.join(', ')}</p>
+        <p><strong>Emprendimientos clave:</strong></p>
+        ${topEmps.map(emp => `<p>${emp.nombre_emprendimiento} (Centralidad: ${emp.betweenness_centrality.toFixed(2)})</p>`).join('')}
+        <p><strong>Insight:</strong> Esta comunidad tiene alta densidad en ${selectedNode.tematicas[0] || 'temáticas variadas'}.</p>
+    `;
+
+    const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
+    graphData.links.forEach(link => {
+        const sourceNode = graphData.nodes.find(n => n.id === link.source);
+        const targetNode = graphData.nodes.find(n => n.id === link.target);
+        if (sourceNode && targetNode) {
+            const com1 = sourceNode.comunidad_louvain;
+            const com2 = targetNode.comunidad_louvain;
+            heatmapData[com1][com2] += link.weight;
+            heatmapData[com2][com1] += link.weight;
+        }
+    });
+
+    const heatmapCtx = document.getElementById('heatmap-chart').getContext('2d');
+    if (heatmapCtx.chart) {
+        heatmapCtx.chart.destroy();
+    }
+    heatmapCtx.chart = new Chart(heatmapCtx, {
+        type: 'matrix',
+        data: {
+            datasets: [{
+                label: 'Conexión entre comunidades',
+                data: heatmapData.flatMap((row, i) => row.map((val, j) => ({ x: j, y: i, v: val }))),
+                backgroundColor: c => `rgba(54, 162, 235, ${c.raw.v / Math.max(...heatmapData.flat()) || 0})`,
+                width: ({ chart }) => chart.chartArea.width / nCommunities,
+                height: ({ chart }) => chart.chartArea.height / nCommunities
+            }]
+        },
+        options: {
+            scales: {
+                x: { title: { display: true, text: 'Comunidad' } },
+                y: { title: { display: true, text: 'Comunidad' } }
+            }
+        }
+    });
+
+    document.getElementById('insight-text').innerHTML = selectedNode.seguidores < Number('{{ max_followers|escapejs }}') / 4
+        ? `⚠️ El emprendimiento seleccionado tiene baja conexión con clusters de alto crecimiento.`
+        : `💡 ${selectedNode.nombre_emprendimiento} está bien conectado en su comunidad.`;
+}
+
+function viewConnection(id) {
+    console.log('Ver conexión con emprendimiento ID:', id);
+}
+
+function generateReport() {
+    console.log('Generando reporte PDF...');
+}
+
+function saveSession() {
+    console.log('Guardando sesión...');
+}
+
+function customizeView() {
+    console.log('Personalizando vista...');
+}
+
+function zoomIn() {
+    svg.transition().call(d3.zoom().scaleBy, 1.2);
+}
+
+function zoomOut() {
+    svg.transition().call(d3.zoom().scaleBy, 0.8);
+}
+
+function resetGraph() {
+    simulation.alpha(1).restart();
+    updateGraph();
+}
+
+function exportGraph() {
+    const svgData = new XMLSerializer().serializeToString(svg.node());
+    const blob = new Blob([svgData], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'graph.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function showTab(tabId) {
+    document.querySelectorAll('.sidebar-tabs button').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelector(`.sidebar-tabs button[onclick="showTab('${tabId}')"]`).classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+updateGraph();
+</script>
 {% endblock %}
