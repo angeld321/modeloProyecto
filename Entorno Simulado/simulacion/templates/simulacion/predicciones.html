@@ -77,7 +77,10 @@
     width: 70%;
     position: relative;
     border-right: 1px solid #ddd;
-    border: 1px solid #000; /* Borde negro cuadrado */
+    border: 1px solid #000;
+    height: calc(100vh - 50px);
+    max-height: calc(100vh - 50px); /* Previene alargamiento */
+    overflow: hidden;
 }
 #insight-text {
     position: absolute;
@@ -92,6 +95,11 @@
     width: 100%;
     height: 100%;
 }
+#graph svg {
+    width: 100%;
+    height: 100%;
+    display: block; /* Asegura que el SVG ocupe el espacio correcto */
+}
 .sidebar {
     width: 30%;
     padding: 10px;
@@ -105,7 +113,7 @@
 .search-container {
     position: relative;
     width: 60%;
-    margin-right: 20px; /* Aumentar margen para separar del botón de configuración */
+    margin-right: 20px;
 }
 #search-input {
     width: 100%;
@@ -225,6 +233,10 @@
     .graph-container, .sidebar {
         width: 100%;
     }
+    .graph-container {
+        height: 50vh;
+        max-height: 50vh; /* Altura fija para móviles */
+    }
     .sidebar {
         margin-top: 20px;
     }
@@ -332,20 +344,20 @@ function updateGraph() {
         .enter().append('circle')
         .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
         .attr('fill', d => d3.schemeCategory10[d.comunidad_louvain % 10])
-        .attr('stroke', d => d.id === (selectedNode?.id_emprendimiento) ? '#000' : null)
-        .attr('stroke-width', d => d.id === (selectedNode?.id_emprendimiento) ? 2 : 0)
+        .attr('stroke', d => d.id === selectedNode?.id_emprendimiento ? '#000' : null)
+        .attr('stroke-width', d => d.id === selectedNode?.id_emprendimiento ? 2 : 0)
         .call(d3.drag()
             .on('start', dragstarted)
             .on('drag', dragged)
             .on('end', dragended))
         .on('mouseover', function(event, d) {
-            if (d.id !== (selectedNode?.id_emprendimiento)) {
+            if (d.id !== selectedNode?.id_emprendimiento) {
                 d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
             }
             showTooltip(d);
         })
         .on('mouseout', function(event, d) {
-            if (d.id !== (selectedNode?.id_emprendimiento)) {
+            if (d.id !== selectedNode?.id_emprendimiento) {
                 d3.select(this).attr('stroke', null).attr('stroke-width', 0);
             }
             hideTooltip();
@@ -454,7 +466,7 @@ function updateSidebar() {
         }
     });
 
-    fetch('/simulacion/recommend-emprendimientos/', {
+    fetch('/simulacion/recommend_emprendimientos/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -462,17 +474,30 @@ function updateSidebar() {
         },
         body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         const recContent = document.getElementById('recommendations-content');
-        recContent.innerHTML = data.recommendations.map(rec => `
-            <div class="rec-card">
-                <p><strong>${rec.nombre}</strong> (ID: ${rec.id})</p>
-                <p>Similitud: ${(rec.similitud * 100).toFixed(1)}%</p>
-                <p>Temáticas: ${rec.tematicas.join(', ')}</p>
-                <button onclick="viewConnection(${rec.id})">Ver Conexión</button>
-            </div>
-        `).join('');
+        if (data.status === 'success' && data.recommendations && data.recommendations.length > 0) {
+            recContent.innerHTML = data.recommendations.map(rec => `
+                <div class="rec-card">
+                    <p><strong>${rec.nombre}</strong> (ID: ${rec.id})</p>
+                    <p>Similitud: ${(rec.similitud * 100).toFixed(1)}%</p>
+                    <p>Temáticas: ${rec.tematicas.join(', ')}</p>
+                    <button onclick="viewConnection(${rec.id})">Ver Conexión</button>
+                </div>
+            `).join('');
+        } else {
+            recContent.innerHTML = '<p>No se encontraron recomendaciones disponibles.</p>';
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar recomendaciones:', error);
+        document.getElementById('recommendations-content').innerHTML = `<p>Error al cargar recomendaciones: ${error.message}. Por favor, verifica la conexión al servidor o contacta al administrador.</p>`;
     });
 
     const community = graphData.nodes.find(n => n.id === selectedNode.id_emprendimiento).comunidad_louvain;

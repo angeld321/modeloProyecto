@@ -19,6 +19,7 @@ from sklearn.decomposition import TruncatedSVD
 import community as community_louvain
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.manifold import TSNE
+import logging
 
 
 
@@ -197,6 +198,16 @@ def ver_comentarios(request, id_publicacion):
         'comentarios': comentarios
     })
 
+# Variable global para almacenar datos preprocesados
+SHARED_DATA = {
+    'G': None,
+    'embeddings': None,
+    'node_ids': None,
+    'emprendimientos': None,
+    'emprendimiento_tematica': None,
+    'tematicas': None
+}
+
 def load_emb(path):
     arr = np.load(path, allow_pickle=True)
     if arr.dtype == object:
@@ -232,7 +243,10 @@ class GraphSAGE(torch.nn.Module):
         return torch.sigmoid(self.predictor(h)).view(-1)
 
 def predicciones(request):
+    global SHARED_DATA
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Cargar datos
     emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
     publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
     comentarios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/comentarios.csv'))
@@ -244,6 +258,7 @@ def predicciones(request):
     cont_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/contenido_embeddings.npy'))
     comm_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/comentario_embeddings.npy'))
 
+    # Crear grafo
     G = nx.Graph()
     for _, row in emprendimientos.iterrows():
         temas = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == row['id_emprendimiento']]['id_tematica'].tolist()
@@ -286,6 +301,7 @@ def predicciones(request):
             for emp2 in G.neighbors(id_emprendimiento):
                 G[id_emprendimiento][emp2]['weight'] += row['cantidad'] / 1000
 
+    # Procesar características
     scaler = MinMaxScaler()
     likes_por_emprendimiento = publicaciones.groupby('id_emprendimiento')['n_likes'].sum().reset_index()
     likes_por_emprendimiento.columns = ['id_emprendimiento', 'total_likes']
@@ -316,6 +332,7 @@ def predicciones(request):
         if row['id_emprendimiento'] in G.nodes:
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
 
+    # Procesar embeddings
     W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2
     node_ids = sorted(G.nodes())
     emb_dim = desc_embs.shape[1]
@@ -335,6 +352,7 @@ def predicciones(request):
     for i, nid in enumerate(node_ids):
         G.nodes[nid]['text_features'] = text_feats[i]
 
+    # Combinar características
     num_list, has_num = [], []
     for nid in node_ids:
         f = G.nodes[nid].get('features')
@@ -365,7 +383,8 @@ def predicciones(request):
     edge_attr = torch.tensor(weights, dtype=torch.float)
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=len(node_ids))
 
-    device = torch.device('cpu')  # Forzar CPU para evitar errores CUDA
+    # Cargar modelo GraphSAGE
+    device = torch.device('cpu')
     in_channels = x.shape[1]
     model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
     model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
@@ -373,9 +392,19 @@ def predicciones(request):
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
+    # Generar embeddings
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device)).cpu().numpy()
 
+    # Almacenar datos para recommend_emprendimientos
+    SHARED_DATA['G'] = G
+    SHARED_DATA['embeddings'] = embeddings
+    SHARED_DATA['node_ids'] = node_ids
+    SHARED_DATA['emprendimientos'] = emprendimientos
+    SHARED_DATA['emprendimiento_tematica'] = emprendimiento_tematica
+    SHARED_DATA['tematicas'] = tematicas
+
+    # Crear datos para el frontend
     partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
     n_communities = len(set(partition.values()))
 
@@ -394,23 +423,23 @@ def predicciones(request):
             seg = int(seguidores[seguidores.id_emprendimiento == node]['cantidad'].values[0]) if node in seguidores.id_emprendimiento.values else 0
             total_likes = int(publicaciones[publicaciones.id_emprendimiento == node]['n_likes'].sum()) if node in publicaciones.id_emprendimiento.values else 0
             graph_data['nodes'].append({
-                'id': int(node),  # Convertir int64 a int
+                'id': int(node),
                 'nombre_emprendimiento': emp['nombre_emprendimiento'],
                 'seguidores': seg,
                 'total_likes': total_likes,
-                'id_municipio_origen': int(emp['id_municipio_origen']),  # Convertir int64 a int
+                'id_municipio_origen': int(emp['id_municipio_origen']),
                 'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
                 'tematicas': tema_names,
-                'comunidad_louvain': int(partition[node]),  # Convertir int64 a int
-                'degree_centrality': float(degree_centrality[node]),  # Convertir a float para consistencia
-                'betweenness_centrality': float(betweenness_centrality[node])  # Convertir a float
+                'comunidad_louvain': int(partition[node]),
+                'degree_centrality': float(degree_centrality[node]),
+                'betweenness_centrality': float(betweenness_centrality[node])
             })
     for u, v, d in G.edges(data=True):
         if u in mapping and v in mapping:
             graph_data['links'].append({
-                'source': int(u),  # Convertir int64 a int
-                'target': int(v),  # Convertir int64 a int
-                'weight': float(d.get('weight', 1.0))  # Convertir a float
+                'source': int(u),
+                'target': int(v),
+                'weight': float(d.get('weight', 1.0))
             })
 
     emprendimientos_data = []
@@ -419,7 +448,7 @@ def predicciones(request):
         tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
         seg = int(seguidores[seguidores.id_emprendimiento == emp['id_emprendimiento']]['cantidad'].values[0]) if emp['id_emprendimiento'] in seguidores.id_emprendimiento.values else 0
         emprendimientos_data.append({
-            'id_emprendimiento': int(emp['id_emprendimiento']),  # Convertir int64 a int
+            'id_emprendimiento': int(emp['id_emprendimiento']),
             'nombre_emprendimiento': emp['nombre_emprendimiento'],
             'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else '',
             'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
@@ -427,8 +456,8 @@ def predicciones(request):
             'tematicas': tema_names
         })
 
-    max_followers = int(seguidores['cantidad'].max()) if not seguidores.empty else 1000  # Convertir int64 a int
-    max_tematicas = int(emprendimiento_tematica.groupby('id_emprendimiento')['id_tematica'].count().max()) if not emprendimiento_tematica.empty else 1  # Convertir int64 a int
+    max_followers = int(seguidores['cantidad'].max()) if not seguidores.empty else 1000
+    max_tematicas = int(emprendimiento_tematica.groupby('id_emprendimiento')['id_tematica'].count().max()) if not emprendimiento_tematica.empty else 1
 
     return render(request, 'simulacion/predicciones.html', {
         'graph_data': json.dumps(graph_data),
@@ -441,90 +470,48 @@ def predicciones(request):
     })
 
 def recommend_emprendimientos(request):
-    if request.method == 'POST':
-        id_emprendimiento = int(request.POST.get('id_emprendimiento'))
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
-        emprendimiento_tematica = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimiento_tematica.csv'))
-        tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
-        desc_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/descripcion_embeddings.npy'))
-        cont_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/contenido_embeddings.npy'))
-        comm_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/comentario_embeddings.npy'))
-        publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
-        comentarios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/comentarios.csv'))
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
-        G = nx.Graph()
-        for _, row in emprendimientos.iterrows():
-            temas = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == row['id_emprendimiento']]['id_tematica'].tolist()
-            G.add_node(row['id_emprendimiento'], tematicas=temas)
+    id_emprendimiento = int(request.POST.get('id_emprendimiento'))
+    
+    # Verificar que los datos estén inicializados
+    if not all(v is not None for v in SHARED_DATA.values()):
+        return JsonResponse({'status': 'error', 'message': 'Datos no inicializados. Visita la página de predicciones primero.'}, status=500)
 
-        for emp1 in G.nodes:
-            for emp2 in G.nodes:
-                if emp1 < emp2:
-                    temas_comunes = len(set(G.nodes[emp1]['tematicas']) & set(G.nodes[emp2]['tematicas']))
-                    if temas_comunes > 0:
-                        G.add_edge(emp1, emp2, weight=temas_comunes)
+    # Usar datos preprocesados
+    G = SHARED_DATA['G']
+    embeddings = SHARED_DATA['embeddings']
+    node_ids = SHARED_DATA['node_ids']
+    emprendimientos = SHARED_DATA['emprendimientos']
+    emprendimiento_tematica = SHARED_DATA['emprendimiento_tematica']
+    tematicas = SHARED_DATA['tematicas']
 
-        W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2
-        node_ids = sorted(G.nodes())
-        emb_dim = desc_embs.shape[1]
-        raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
-        for i, nid in enumerate(node_ids):
-            row = emprendimientos[emprendimientos.id_emprendimiento == nid]
-            de = desc_embs[row.index[0]] if not row.empty else np.zeros(emb_dim, dtype=np.float32)
-            p_rows = publicaciones[publicaciones.id_emprendimiento == nid]
-            pe = np.nanmean(cont_embs[p_rows.index.values], axis=0) if not p_rows.empty else np.zeros(emb_dim, dtype=np.float32)
-            pub_ids = p_rows.id_publicacion.values
-            c_rows = comentarios[comentarios.id_publicacion.isin(pub_ids)]
-            ce = np.nanmean(comm_embs[c_rows.index.values], axis=0) if not c_rows.empty else np.zeros(emb_dim, dtype=np.float32)
-            raw_text[i] = W_DESC * de + W_PUB * pe + W_COM * ce
-        svd = TruncatedSVD(n_components=128, random_state=42)
-        text_feats = svd.fit_transform(raw_text)
-        for i, nid in enumerate(node_ids):
-            G.nodes[nid]['text_features'] = text_feats[i]
+    try:
+        target_idx = np.where(np.array(node_ids) == id_emprendimiento)[0][0]
+    except IndexError:
+        return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
 
-        x = torch.tensor([G.nodes[n]['text_features'] for n in node_ids], dtype=torch.float)
-        edges = [[u, v] for u, v in G.edges()] + [[v, u] for u, v in G.edges()]
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-        data = Data(x=x, edge_index=edge_index, num_nodes=len(node_ids))
+    target_embedding = embeddings[target_idx].reshape(1, -1)
+    similarities = cosine_similarity(target_embedding, embeddings)[0]
+    sorted_indices = np.argsort(similarities)[::-1]
+    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento][:5]
 
-        device = torch.device('cpu')
-        model = GraphSAGE(in_channels=128, hidden_channels=256, out_channels=128).to(device)
-        model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
-        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+    recommendations = []
+    for idx in sorted_indices:
+        emp_id = node_ids[idx]
+        emp = emprendimientos[emprendimientos.id_emprendimiento == emp_id].iloc[0]
+        temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == emp_id]['id_tematica'].tolist()
+        tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
+        recommendations.append({
+            'id': int(emp_id),
+            'nombre': emp['nombre_emprendimiento'],
+            'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else '',
+            'tematicas': tema_names,
+            'similitud': float(similarities[idx])
+        })
 
-        with torch.no_grad():
-            embeddings = model(data.x.to(device), data.edge_index.to(device)).cpu().numpy()
-
-        node_ids = emprendimientos['id_emprendimiento'].values
-        try:
-            target_idx = np.where(node_ids == id_emprendimiento)[0][0]
-        except IndexError:
-            return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
-
-        target_embedding = embeddings[target_idx].reshape(1, -1)
-        similarities = cosine_similarity(target_embedding, embeddings)[0]
-        sorted_indices = np.argsort(similarities)[::-1]
-        sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento][:5]
-
-        recommendations = []
-        for idx in sorted_indices:
-            emp_id = node_ids[idx]
-            emp = emprendimientos[emprendimientos.id_emprendimiento == emp_id].iloc[0]
-            temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == emp_id]['id_tematica'].tolist()
-            tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
-            recommendations.append({
-                'id': emp_id,
-                'nombre': emp['nombre_emprendimiento'],
-                'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else '',
-                'tematicas': tema_names,
-                'similitud': similarities[idx]
-            })
-
-        return JsonResponse({'status': 'success', 'recommendations': recommendations})
-    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+    return JsonResponse({'status': 'success', 'recommendations': recommendations})
 
 def evaluacion(request):
     return render(request, 'simulacion/evaluacion.html')
