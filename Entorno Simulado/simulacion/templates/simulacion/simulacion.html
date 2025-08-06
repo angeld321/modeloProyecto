@@ -270,7 +270,7 @@ function realizarSimulacion() {
         return;
     }
     // Redirigir correctamente usando la URL base
-    window.location.href = `/publicaciones/${currentEmprendimientoId}/`;
+    window.location.href = `/simulacion/publicaciones/${currentEmprendimientoId}/`;
     // O alternativamente:
     // window.location.href = `{% url 'simulacion:publicaciones' 0 %}`.replace('0', currentEmprendimientoId);
 }
@@ -298,7 +298,7 @@ function guardarPublicaciones() {
     loading.innerHTML = '<p>Guardando publicaciones...</p>';
     document.getElementById('modal-ingresar-publicaciones').appendChild(loading);
 
-    fetch('/simulacion/guardar-publicaciones/', {
+    fetch('/simulacion/simulacion/guardar-publicaciones/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
