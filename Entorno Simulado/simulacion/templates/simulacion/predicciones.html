@@ -295,6 +295,7 @@ function loadGraphData() {
 // Cargar datos
 const { graphData, emprendimientosData, tematicasData, nCommunities } = loadGraphData();
 let selectedNode = null;
+let highlightedConnection = null; // Variable para rastrear la conexión resaltada
 
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
@@ -353,8 +354,11 @@ const zoom = d3.zoom()
 svg.call(zoom);
 
 function updateGraph() {
+    // Limpiar el SVG
     svg.selectAll('*').remove();
     const g = svg.append('g');
+
+    // Aplicar filtros
     const minFollowers = +document.getElementById('followers-range').value;
     const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
     
@@ -364,41 +368,85 @@ function updateGraph() {
     );
     const nodeIds = new Set(filteredNodes.map(n => n.id));
     const filteredLinks = graphData.links.filter(link => 
-        nodeIds.has(link.source) && nodeIds.has(link.target)
+        nodeIds.has(link.source.id || link.source) && nodeIds.has(link.target.id || link.target)
     );
 
+    // Dibujar enlaces
     const links = g.append('g').selectAll('line')
         .data(filteredLinks)
         .enter().append('line')
-        .attr('stroke', '#999')
-        .attr('stroke-opacity', 0.6)
-        .attr('stroke-width', d => Math.sqrt(d.weight));
+        .attr('stroke', d => {
+            const sourceId = d.source.id || d.source;
+            const targetId = d.target.id || d.target;
+            if (highlightedConnection && 
+                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+                return '#FF0000'; // Rojo brillante para enlace resaltado
+            }
+            return '#999';
+        })
+        .attr('stroke-opacity', d => {
+            const sourceId = d.source.id || d.source;
+            const targetId = d.target.id || d.target;
+            if (highlightedConnection && 
+                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+                return 1; // Opacidad completa para enlace resaltado
+            }
+            return 0.6;
+        })
+        .attr('stroke-width', d => {
+            const sourceId = d.source.id || d.source;
+            const targetId = d.target.id || d.target;
+            if (highlightedConnection && 
+                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+                return 5; // Grosor mayor para enlace resaltado
+            }
+            return Math.sqrt(d.weight || 1);
+        });
 
+    // Dibujar nodos
     const nodes = g.append('g').selectAll('circle')
         .data(filteredNodes)
         .enter().append('circle')
         .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
-        .attr('fill', d => d3.schemeCategory10[d.comunidad_louvain % 10])
-        .attr('stroke', d => d.id === selectedNode?.id_emprendimiento ? '#000' : null)
-        .attr('stroke-width', d => d.id === selectedNode?.id_emprendimiento ? 2 : 0)
+        .attr('fill', d => {
+            if (d.id === selectedNode?.id_emprendimiento) {
+                return '#FFD700'; // Dorado para nodo seleccionado
+            } else if (highlightedConnection && d.id === highlightedConnection.targetId) {
+                return '#FF4500'; // Naranja rojizo para nodo recomendado
+            }
+            return d3.schemeCategory10[d.comunidad_louvain % 10];
+        })
+        .attr('opacity', d => {
+            if (highlightedConnection && 
+                (d.id === highlightedConnection.sourceId || d.id === highlightedConnection.targetId)) {
+                return 1; // Opacidad completa para nodos resaltados
+            }
+            return highlightedConnection ? 0.3 : 1; // Reducir opacidad de otros nodos si hay conexión resaltada
+        })
         .call(d3.drag()
             .on('start', dragstarted)
             .on('drag', dragged)
             .on('end', dragended))
         .on('mouseover', function(event, d) {
-            if (d.id !== selectedNode?.id_emprendimiento) {
-                d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
+            if (!highlightedConnection || 
+                (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
+                d3.select(this).attr('opacity', 1);
             }
             showTooltip(d);
         })
         .on('mouseout', function(event, d) {
-            if (d.id !== selectedNode?.id_emprendimiento) {
-                d3.select(this).attr('stroke', null).attr('stroke-width', 0);
+            if (highlightedConnection && 
+                (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
+                d3.select(this).attr('opacity', 0.3);
             }
             hideTooltip();
         })
         .on('click', (event, d) => selectNode(d.id));
 
+    // Configurar simulación
     simulation.nodes(filteredNodes).on('tick', () => {
         links
             .attr('x1', d => d.source.x)
@@ -411,6 +459,7 @@ function updateGraph() {
     });
 
     simulation.force('link').links(filteredLinks);
+    simulation.alpha(1).restart(); // Reiniciar simulación para estabilizar el grafo
 }
 
 function dragstarted(event, d) {
@@ -453,6 +502,7 @@ function hideTooltip() {
 
 function selectNode(id) {
     selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
+    highlightedConnection = null; // Resetear conexión resaltada al seleccionar un nuevo nodo
     updateSidebar();
     updateGraph();
 }
@@ -548,8 +598,8 @@ function updateSidebar() {
 
     const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
     graphData.links.forEach(link => {
-        const sourceNode = graphData.nodes.find(n => n.id === link.source);
-        const targetNode = graphData.nodes.find(n => n.id === link.target);
+        const sourceNode = graphData.nodes.find(n => n.id === (link.source.id || link.source));
+        const targetNode = graphData.nodes.find(n => n.id === (link.target.id || link.target));
         if (sourceNode && targetNode) {
             const com1 = sourceNode.comunidad_louvain;
             const com2 = targetNode.comunidad_louvain;
@@ -587,7 +637,12 @@ function updateSidebar() {
 }
 
 function viewConnection(id) {
-    console.log('Ver conexión con emprendimiento ID:', id);
+    if (!selectedNode) {
+        alert('Por favor, selecciona un emprendimiento primero.');
+        return;
+    }
+    highlightedConnection = { sourceId: selectedNode.id_emprendimiento, targetId: id };
+    updateGraph();
 }
 
 function generateReport() {
@@ -596,7 +651,6 @@ function generateReport() {
 
 function saveSession() {
     console.log('Guardando sesión...');
-    // Limpiar caché para forzar recarga en la próxima visita
     localStorage.removeItem('prediccionesGraphData');
     localStorage.removeItem('prediccionesTimestamp');
 }
