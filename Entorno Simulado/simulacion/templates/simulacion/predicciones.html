@@ -255,10 +255,45 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const graphData = JSON.parse('{{ graph_data|escapejs }}');
-const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
-const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
-const nCommunities = Number('{{ n_communities|escapejs }}');
+// Función para obtener datos de localStorage o del servidor
+function loadGraphData() {
+    const storedData = localStorage.getItem('prediccionesGraphData');
+    const storedTimestamp = localStorage.getItem('prediccionesTimestamp');
+    const currentTime = new Date().getTime();
+    const cacheDuration = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
+
+    // Verificar si hay datos en localStorage y si no han expirado
+    if (storedData && storedTimestamp && (currentTime - storedTimestamp < cacheDuration)) {
+        const data = JSON.parse(storedData);
+        return {
+            graphData: data.graphData,
+            emprendimientosData: data.emprendimientosData,
+            tematicasData: data.tematicasData,
+            nCommunities: data.nCommunities
+        };
+    }
+
+    // Si no hay datos o están expirados, usar datos del servidor y almacenarlos
+    const graphData = JSON.parse('{{ graph_data|escapejs }}');
+    const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
+    const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
+    const nCommunities = Number('{{ n_communities|escapejs }}');
+
+    // Guardar en localStorage
+    const dataToStore = {
+        graphData,
+        emprendimientosData,
+        tematicasData,
+        nCommunities
+    };
+    localStorage.setItem('prediccionesGraphData', JSON.stringify(dataToStore));
+    localStorage.setItem('prediccionesTimestamp', currentTime);
+
+    return { graphData, emprendimientosData, tematicasData, nCommunities };
+}
+
+// Cargar datos
+const { graphData, emprendimientosData, tematicasData, nCommunities } = loadGraphData();
 let selectedNode = null;
 
 const searchInput = document.getElementById('search-input');
@@ -561,6 +596,9 @@ function generateReport() {
 
 function saveSession() {
     console.log('Guardando sesión...');
+    // Limpiar caché para forzar recarga en la próxima visita
+    localStorage.removeItem('prediccionesGraphData');
+    localStorage.removeItem('prediccionesTimestamp');
 }
 
 function customizeView() {
