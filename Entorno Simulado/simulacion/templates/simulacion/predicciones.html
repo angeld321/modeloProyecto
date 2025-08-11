@@ -63,6 +63,7 @@
         <div class="quick-actions">
             <button onclick="saveSession()">💾 Guardar Sesión</button>
             <button onclick="customizeView()">🎨 Personalizar Vista</button>
+            <button onclick="resetGraph()">🔄 Reiniciar Grafo</button>
         </div>
     </div>
 </div>
@@ -419,6 +420,18 @@ function updateGraph() {
             }
             return d3.schemeCategory10[d.comunidad_louvain % 10];
         })
+        .attr('stroke', d => {
+            if (d.id === selectedNode?.id_emprendimiento) {
+                return '#000000'; // Borde negro para nodo seleccionado
+            }
+            return null;
+        })
+        .attr('stroke-width', d => {
+            if (d.id === selectedNode?.id_emprendimiento) {
+                return 2; // Grosor del borde negro
+            }
+            return 0;
+        })
         .attr('opacity', d => {
             if (highlightedConnection && 
                 (d.id === highlightedConnection.sourceId || d.id === highlightedConnection.targetId)) {
@@ -505,6 +518,11 @@ function selectNode(id) {
     highlightedConnection = null; // Resetear conexión resaltada al seleccionar un nuevo nodo
     updateSidebar();
     updateGraph();
+}
+
+function resetGraph() {
+    highlightedConnection = null; // Limpiar conexión resaltada
+    updateGraph(); // Actualizar el grafo para mostrar todos los nodos y enlaces sin resaltado
 }
 
 function updateSidebar() {
