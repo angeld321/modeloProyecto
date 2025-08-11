@@ -493,12 +493,17 @@ function dragended(event, d) {
 }
 
 function showTooltip(d) {
+    // Primero elimina cualquier tooltip existente
+    hideTooltip();
+    
+    // Luego crea el nuevo tooltip
     const tooltip = d3.select('body').append('div')
         .attr('class', 'tooltip')
         .style('position', 'absolute')
         .style('background', 'white')
         .style('padding', '5px')
         .style('border', '1px solid #ddd')
+        .style('z-index', '1000')  // Asegura que esté por encima de otros elementos
         .html(`
             <strong>${d.nombre_emprendimiento}</strong><br>
             Seguidores: ${d.seguidores || 0}<br>
@@ -510,14 +515,16 @@ function showTooltip(d) {
 }
 
 function hideTooltip() {
-    d3.select('.tooltip').remove();
+    d3.selectAll('.tooltip').remove();
 }
 
 function selectNode(id) {
-    selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
-    highlightedConnection = null; // Resetear conexión resaltada al seleccionar un nuevo nodo
+    // Eliminar tooltips existentes
+    hideTooltip();
+    
+    selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);    
+    resetGraph();
     updateSidebar();
-    updateGraph();
 }
 
 function resetGraph() {
