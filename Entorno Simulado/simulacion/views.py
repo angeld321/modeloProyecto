@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from .models import Emprendimiento, Municipio, Alcance, Tematica, Publicacion, Seguidores, Comentario
 import random
 import json
-import requests  # Añadí requests
+import requests  
 import os
 from dotenv import load_dotenv
 from django.shortcuts import render, redirect, get_object_or_404
@@ -20,6 +20,15 @@ import community as community_louvain
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.manifold import TSNE
 import logging
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Image
+from django.http import HttpResponse
+from django.template.loader import get_template
+from xhtml2pdf import pisa
+from datetime import datetime  # Agrega esta línea al inicio con las otras importaciones
 
 
 
@@ -512,6 +521,78 @@ def recommend_emprendimientos(request):
         })
 
     return JsonResponse({'status': 'success', 'recommendations': recommendations})
+
+
+def generate_pdf_report(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+    
+    id_emprendimiento = int(request.POST.get('id_emprendimiento'))
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Obtener datos del emprendimiento
+    emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
+    emprendimiento_tematica = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimiento_tematica.csv'))
+    tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
+    municipios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/municipios.csv'))
+    seguidores = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/seguidores.csv'))
+    publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
+    
+    emp = emprendimientos[emprendimientos.id_emprendimiento == id_emprendimiento].iloc[0]
+    temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == id_emprendimiento]['id_tematica'].tolist()
+    tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
+    municipio = municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else ''
+    seguidores_count = seguidores[seguidores.id_emprendimiento == id_emprendimiento]['cantidad'].values[0] if id_emprendimiento in seguidores.id_emprendimiento.values else 0
+    total_likes = publicaciones[publicaciones.id_emprendimiento == id_emprendimiento]['n_likes'].sum() if id_emprendimiento in publicaciones.id_emprendimiento.values else 0
+    
+    # Obtener recomendaciones
+    recommendations = []
+    if 'G' in SHARED_DATA and id_emprendimiento in SHARED_DATA['G'].nodes():
+        target_idx = np.where(np.array(SHARED_DATA['node_ids']) == id_emprendimiento)[0][0]
+        target_embedding = SHARED_DATA['embeddings'][target_idx].reshape(1, -1)
+        similarities = cosine_similarity(target_embedding, SHARED_DATA['embeddings'])[0]
+        sorted_indices = np.argsort(similarities)[::-1]
+        sorted_indices = [i for i in sorted_indices if SHARED_DATA['node_ids'][i] != id_emprendimiento][:3]
+        
+        for idx in sorted_indices:
+            rec_id = SHARED_DATA['node_ids'][idx]
+            rec_emp = emprendimientos[emprendimientos.id_emprendimiento == rec_id].iloc[0]
+            rec_temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == rec_id]['id_tematica'].tolist()
+            rec_tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in rec_temas]
+            recommendations.append({
+                'nombre': rec_emp['nombre_emprendimiento'],
+                'similitud': float(similarities[idx]),
+                'tematicas': rec_tema_names
+            })
+    
+    # Crear contexto para el template
+    context = {
+        'emprendimiento': {
+            'nombre': emp['nombre_emprendimiento'],
+            'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else 'Sin descripción',
+            'municipio': municipio,
+            'seguidores': seguidores_count,
+            'total_likes': total_likes,
+            'tematicas': tema_names
+        },
+        'recommendations': recommendations,
+        'fecha': datetime.now().strftime("%d/%m/%Y %H:%M")
+    }
+    
+    # Renderizar template HTML
+    template = get_template('simulacion/report_template.html')
+    html = template.render(context)
+    
+    # Crear respuesta PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="reporte_{id_emprendimiento}.pdf"'
+    
+    # Generar PDF
+    pisa_status = pisa.CreatePDF(html, dest=response)
+    if pisa_status.err:
+        return HttpResponse('Error al generar PDF', status=500)
+    
+    return response
 
 def evaluacion(request):
     return render(request, 'simulacion/evaluacion.html')

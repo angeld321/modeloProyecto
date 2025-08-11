@@ -13,6 +13,7 @@ urlpatterns = [
     path('guardar-comentarios/', views.guardar_comentarios, name='guardar_comentarios'),
     path('ver-comentarios/<int:id_publicacion>/', views.ver_comentarios, name='ver_comentarios'),
     path('predicciones/', views.predicciones, name='predicciones'),
-    path('recommend_emprendimientos/', views.recommend_emprendimientos, name='recommend_emprendimientos'),    
+    path('recommend_emprendimientos/', views.recommend_emprendimientos, name='recommend_emprendimientos'),
+    path('generate_pdf_report/', views.generate_pdf_report, name='generate_pdf_report'),    
     path('evaluacion/', views.evaluacion, name='evaluacion'),
 ]

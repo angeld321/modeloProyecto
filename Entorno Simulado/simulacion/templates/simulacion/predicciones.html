@@ -62,7 +62,6 @@
         </div>
         <div class="quick-actions">
             <button onclick="saveSession()">💾 Guardar Sesión</button>
-            <button onclick="customizeView()">🎨 Personalizar Vista</button>
             <button onclick="resetGraph()">🔄 Reiniciar Grafo</button>
         </div>
     </div>
@@ -671,7 +670,51 @@ function viewConnection(id) {
 }
 
 function generateReport() {
-    console.log('Generando reporte PDF...');
+    if (!selectedNode) {
+        alert('Por favor, selecciona un emprendimiento primero.');
+        return;
+    }
+
+    // Mostrar mensaje de generación
+    const originalText = document.querySelector('.report-btn').textContent;
+    document.querySelector('.report-btn').textContent = 'Generando...';
+    document.querySelector('.report-btn').disabled = true;
+
+    // Enviar solicitud al servidor
+    fetch('/simulacion/generate_pdf_report/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.blob();
+        }
+        throw new Error('Error al generar el reporte');
+    })
+    .then(blob => {
+        // Crear enlace para descargar el PDF
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte_${selectedNode.id_emprendimiento}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al generar el reporte: ' + error.message);
+    })
+    .finally(() => {
+        // Restaurar estado del botón
+        document.querySelector('.report-btn').textContent = originalText;
+        document.querySelector('.report-btn').disabled = false;
+    });
 }
 
 function saveSession() {
@@ -680,9 +723,7 @@ function saveSession() {
     localStorage.removeItem('prediccionesTimestamp');
 }
 
-function customizeView() {
-    console.log('Personalizando vista...');
-}
+
 
 function showTab(tabId) {
     document.querySelectorAll('.sidebar-tabs button').forEach(btn => btn.classList.remove('active'));
