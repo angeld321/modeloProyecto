@@ -412,6 +412,7 @@ def predicciones(request):
     SHARED_DATA['emprendimientos'] = emprendimientos
     SHARED_DATA['emprendimiento_tematica'] = emprendimiento_tematica
     SHARED_DATA['tematicas'] = tematicas
+    SHARED_DATA['municipios'] = municipios
 
     # Crear datos para el frontend
     partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
@@ -431,6 +432,7 @@ def predicciones(request):
             tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
             seg = int(seguidores[seguidores.id_emprendimiento == node]['cantidad'].values[0]) if node in seguidores.id_emprendimiento.values else 0
             total_likes = int(publicaciones[publicaciones.id_emprendimiento == node]['n_likes'].sum()) if node in publicaciones.id_emprendimiento.values else 0
+            22
             graph_data['nodes'].append({
                 'id': int(node),
                 'nombre_emprendimiento': emp['nombre_emprendimiento'],
@@ -443,13 +445,13 @@ def predicciones(request):
                 'degree_centrality': float(degree_centrality[node]),
                 'betweenness_centrality': float(betweenness_centrality[node])
             })
-    for u, v, d in G.edges(data=True):
-        if u in mapping and v in mapping:
-            graph_data['links'].append({
-                'source': int(u),
-                'target': int(v),
-                'weight': float(d.get('weight', 1.0))
-            })
+            for u, v, d in G.edges(data=True):
+                if u in mapping and v in mapping:
+                    graph_data['links'].append({
+                        'source': int(u),
+                        'target': int(v),
+                        'weight': float(d.get('weight', 1.0))
+                    })
 
     emprendimientos_data = []
     for _, emp in emprendimientos.iterrows():
@@ -495,6 +497,7 @@ def recommend_emprendimientos(request):
     emprendimientos = SHARED_DATA['emprendimientos']
     emprendimiento_tematica = SHARED_DATA['emprendimiento_tematica']
     tematicas = SHARED_DATA['tematicas']
+    municipios = SHARED_DATA['municipios']
 
     try:
         target_idx = np.where(np.array(node_ids) == id_emprendimiento)[0][0]
@@ -504,7 +507,7 @@ def recommend_emprendimientos(request):
     target_embedding = embeddings[target_idx].reshape(1, -1)
     similarities = cosine_similarity(target_embedding, embeddings)[0]
     sorted_indices = np.argsort(similarities)[::-1]
-    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento][:5]
+    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento][:15]
 
     recommendations = []
     for idx in sorted_indices:
@@ -516,8 +519,10 @@ def recommend_emprendimientos(request):
             'id': int(emp_id),
             'nombre': emp['nombre_emprendimiento'],
             'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else '',
+            'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
+            'alcance': int(emp['id_alcance']),
             'tematicas': tema_names,
-            'similitud': float(similarities[idx])
+            'similitud': f"{similarities[idx]:.3f}"
         })
 
     return JsonResponse({'status': 'success', 'recommendations': recommendations})
