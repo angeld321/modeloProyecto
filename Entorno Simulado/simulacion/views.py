@@ -28,7 +28,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Image
 from django.http import HttpResponse
 from django.template.loader import get_template
 from xhtml2pdf import pisa
-from datetime import datetime  # Agrega esta línea al inicio con las otras importaciones
+from datetime import datetime
+from sklearn.cluster import KMeans   
 
 
 
@@ -535,15 +536,30 @@ def generate_pdf_report(request):
     id_emprendimiento = int(request.POST.get('id_emprendimiento'))
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
+    # Verificar que SHARED_DATA esté inicializado
+    required_keys = ['G', 'embeddings', 'node_ids', 'emprendimientos', 'emprendimiento_tematica', 'tematicas', 'municipios']
+    if not all(key in SHARED_DATA and SHARED_DATA[key] is not None for key in required_keys):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Datos no inicializados. Por favor, visita la página de predicciones primero.'
+        }, status=500)
+
     # Obtener datos del emprendimiento
-    emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
-    emprendimiento_tematica = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimiento_tematica.csv'))
-    tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
-    municipios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/municipios.csv'))
+    emprendimientos = SHARED_DATA['emprendimientos']
+    emprendimiento_tematica = SHARED_DATA['emprendimiento_tematica']
+    tematicas = SHARED_DATA['tematicas']
+    municipios = SHARED_DATA['municipios']
     seguidores = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/seguidores.csv'))
     publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
     
-    emp = emprendimientos[emprendimientos.id_emprendimiento == id_emprendimiento].iloc[0]
+    try:
+        emp = emprendimientos[emprendimientos.id_emprendimiento == id_emprendimiento].iloc[0]
+    except IndexError:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Emprendimiento con ID {id_emprendimiento} no encontrado.'
+        }, status=404)
+
     temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == id_emprendimiento]['id_tematica'].tolist()
     tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
     municipio = municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else ''
@@ -552,24 +568,29 @@ def generate_pdf_report(request):
     
     # Obtener recomendaciones
     recommendations = []
-    if 'G' in SHARED_DATA and id_emprendimiento in SHARED_DATA['G'].nodes():
-        target_idx = np.where(np.array(SHARED_DATA['node_ids']) == id_emprendimiento)[0][0]
-        target_embedding = SHARED_DATA['embeddings'][target_idx].reshape(1, -1)
-        similarities = cosine_similarity(target_embedding, SHARED_DATA['embeddings'])[0]
-        sorted_indices = np.argsort(similarities)[::-1]
-        sorted_indices = [i for i in sorted_indices if SHARED_DATA['node_ids'][i] != id_emprendimiento][:3]
-        
-        for idx in sorted_indices:
-            rec_id = SHARED_DATA['node_ids'][idx]
-            rec_emp = emprendimientos[emprendimientos.id_emprendimiento == rec_id].iloc[0]
-            rec_temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == rec_id]['id_tematica'].tolist()
-            rec_tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in rec_temas]
-            recommendations.append({
-                'nombre': rec_emp['nombre_emprendimiento'],
-                'similitud': float(similarities[idx]),
-                'tematicas': rec_tema_names
-            })
-    
+    if id_emprendimiento in SHARED_DATA['G'].nodes():
+        try:
+            target_idx = np.where(np.array(SHARED_DATA['node_ids']) == id_emprendimiento)[0][0]
+            from sklearn.preprocessing import normalize
+            embeddings = normalize(SHARED_DATA['embeddings'])  # Normalizar embeddings
+            target_embedding = embeddings[target_idx].reshape(1, -1)
+            similarities = cosine_similarity(target_embedding, embeddings)[0]
+            sorted_indices = np.argsort(similarities)[::-1]
+            sorted_indices = [i for i in sorted_indices if SHARED_DATA['node_ids'][i] != id_emprendimiento and similarities[i] > 0.1][:20]
+            
+            for idx in sorted_indices:
+                rec_id = SHARED_DATA['node_ids'][idx]
+                rec_emp = emprendimientos[emprendimientos.id_emprendimiento == rec_id].iloc[0]
+                rec_temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == rec_id]['id_tematica'].tolist()
+                rec_tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in rec_temas]
+                recommendations.append({
+                    'nombre': rec_emp['nombre_emprendimiento'],
+                    'similitud': f"{similarities[idx]:.3f}",
+                    'tematicas': rec_tema_names
+                })
+        except IndexError:
+            recommendations = []  # En caso de error, devolver lista vacía de recomendaciones
+
     # Crear contexto para el template
     context = {
         'emprendimiento': {
