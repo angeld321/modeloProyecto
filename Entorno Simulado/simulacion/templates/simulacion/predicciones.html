@@ -352,6 +352,47 @@ const zoom = d3.zoom()
     });
 svg.call(zoom);
 
+
+/*
+
+    Clusterización K-MEANS
+
+*/
+
+let colorMode = 'community'; // Modo inicial de coloreado (por comunidad Louvain)
+let clusteringType = 'kmeans'; // Tipo de clustering por default
+
+function selectAlgo(algo) {
+    document.querySelectorAll('.algo-tabs button').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (algo === 'community') {
+        colorMode = 'community';
+    } else if (algo === 'clustering') {
+        colorMode = 'clustering';
+    } // 'recommendations' no cambia colorMode
+    
+    updateGraph(); // Actualizar el grafo con el nuevo modo de coloreado
+}
+
+// Agregar select para tipo de clustering dentro del panel de config (en HTML, agrega esto en .advanced-settings)
+const clusteringSelect = document.createElement('select');
+clusteringSelect.id = 'clustering-type';
+clusteringSelect.innerHTML = `
+    <option value="kmeans">K-Means</option>
+    <option value="agglomerative">Agglomerative</option>
+    <option value="dbscan">DBSCAN</option>
+`;
+clusteringSelect.addEventListener('change', (e) => {
+    clusteringType = e.target.value;
+    if (colorMode === 'clustering') {
+        updateGraph();
+    }
+});
+document.querySelector('.advanced-settings').appendChild(clusteringSelect);
+
+
+
 function updateGraph() {
     // Limpiar el SVG
     svg.selectAll('*').remove();
@@ -405,18 +446,30 @@ function updateGraph() {
             return Math.sqrt(d.weight || 1);
         });
 
-    // Dibujar nodos
+    // Dibujar nodos con coloreado basado en el modo actual
     const nodes = g.append('g').selectAll('circle')
         .data(filteredNodes)
         .enter().append('circle')
         .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
         .attr('fill', d => {
+            let clusterValue;
+            if (colorMode === 'clustering') {
+                if (clusteringType === 'kmeans') {
+                    clusterValue = d.cluster_kmeans;
+                } else if (clusteringType === 'agglomerative') {
+                    clusterValue = d.cluster_agglomerative;
+                } else if (clusteringType === 'dbscan') {
+                    clusterValue = d.cluster_dbscan;
+                }
+            } else {
+                clusterValue = d.comunidad_louvain;
+            }
             if (d.id === selectedNode?.id_emprendimiento) {
                 return '#FFD700'; // Dorado para nodo seleccionado
             } else if (highlightedConnection && d.id === highlightedConnection.targetId) {
                 return '#FF4500'; // Naranja rojizo para nodo recomendado
             }
-            return d3.schemeCategory10[d.comunidad_louvain % 10];
+            return d3.schemeCategory10[clusterValue % 10];
         })
         .attr('stroke', d => {
             if (d.id === selectedNode?.id_emprendimiento) {

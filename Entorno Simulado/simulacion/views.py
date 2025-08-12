@@ -30,7 +30,8 @@ from django.template.loader import get_template
 from xhtml2pdf import pisa
 from datetime import datetime
 from sklearn.cluster import KMeans   
-
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 
 
@@ -308,8 +309,9 @@ def predicciones(request):
         id_emprendimiento = row['id_emprendimiento']
         if id_emprendimiento in G.nodes:
             G.nodes[id_emprendimiento]['seguidores'] = row['cantidad']
-            for emp2 in G.neighbors(id_emprendimiento):
-                G[id_emprendimiento][emp2]['weight'] += row['cantidad'] / 1000
+            # No ajustar pesos por seguidores
+            # for emp2 in G.neighbors(id_emprendimiento):
+            #     G[id_emprendimiento][emp2]['weight'] += row['cantidad'] / 1000
 
     # Procesar características
     scaler = MinMaxScaler()
@@ -343,7 +345,7 @@ def predicciones(request):
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
 
     # Procesar embeddings
-    W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2
+    W_DESC, W_PUB, W_COM = 0.7, 0.2, 0.1  # Aumentar peso de la descripción
     node_ids = sorted(G.nodes())
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
@@ -357,7 +359,7 @@ def predicciones(request):
         ce = np.nanmean(comm_embs[c_rows.index.values], axis=0) if not c_rows.empty else np.zeros(emb_dim, dtype=np.float32)
         raw_text[i] = W_DESC * de + W_PUB * pe + W_COM * ce
 
-    svd = TruncatedSVD(n_components=128, random_state=42)
+    svd = TruncatedSVD(n_components=120, random_state=42)  # Ajustar a 120 para coincidir con el modelo
     text_feats = svd.fit_transform(raw_text)
     for i, nid in enumerate(node_ids):
         G.nodes[nid]['text_features'] = text_feats[i]
@@ -376,7 +378,7 @@ def predicciones(request):
         for j, nid in enumerate(has_num):
             G.nodes[nid]['scaled_num'] = scaled[j]
 
-    A, B = 0.4, 0.6
+    A, B = 0.2, 0.8  # Reducir peso de características numéricas
     for nid in node_ids:
         num = G.nodes[nid].get('scaled_num', np.zeros_like(text_feats[0], dtype=np.float32))
         txt = G.nodes[nid]['text_features']
@@ -394,7 +396,7 @@ def predicciones(request):
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=len(node_ids))
 
     # Cargar modelo GraphSAGE
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     in_channels = x.shape[1]
     model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
     model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
@@ -402,9 +404,22 @@ def predicciones(request):
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
-    # Generar embeddings
+# Generar embeddings
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device)).cpu().numpy()
+
+    # Computar múltiples métodos de clustering en embeddings
+    z = embeddings
+    n_clusters = len(tematicas)  # Ajustar al número de temáticas para mejor concordancia
+    # K-Means
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans_labels = kmeans.fit_predict(z)
+    # Agglomerative Clustering
+    agglomerative = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
+    agg_labels = agglomerative.fit_predict(z)
+    # DBSCAN (para detectar outliers)
+    dbscan = DBSCAN(eps=0.5, min_samples=5)
+    dbscan_labels = dbscan.fit_predict(z)
 
     # Almacenar datos para recommend_emprendimientos
     SHARED_DATA['G'] = G
@@ -425,7 +440,7 @@ def predicciones(request):
     }
     degree_centrality = nx.degree_centrality(G)
     betweenness_centrality = nx.betweenness_centrality(G, weight='weight')
-    for node in G.nodes():
+    for i, node in enumerate(node_ids):
         emp = emprendimientos[emprendimientos.id_emprendimiento == node]
         if not emp.empty:
             emp = emp.iloc[0]
@@ -433,7 +448,6 @@ def predicciones(request):
             tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
             seg = int(seguidores[seguidores.id_emprendimiento == node]['cantidad'].values[0]) if node in seguidores.id_emprendimiento.values else 0
             total_likes = int(publicaciones[publicaciones.id_emprendimiento == node]['n_likes'].sum()) if node in publicaciones.id_emprendimiento.values else 0
-            22
             graph_data['nodes'].append({
                 'id': int(node),
                 'nombre_emprendimiento': emp['nombre_emprendimiento'],
@@ -443,16 +457,19 @@ def predicciones(request):
                 'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
                 'tematicas': tema_names,
                 'comunidad_louvain': int(partition[node]),
+                'cluster_kmeans': int(kmeans_labels[i]),
+                'cluster_agglomerative': int(agg_labels[i]),
+                'cluster_dbscan': int(dbscan_labels[i]),
                 'degree_centrality': float(degree_centrality[node]),
                 'betweenness_centrality': float(betweenness_centrality[node])
             })
-            for u, v, d in G.edges(data=True):
-                if u in mapping and v in mapping:
-                    graph_data['links'].append({
-                        'source': int(u),
-                        'target': int(v),
-                        'weight': float(d.get('weight', 1.0))
-                    })
+    for u, v, d in G.edges(data=True):
+        if u in mapping and v in mapping:
+            graph_data['links'].append({
+                'source': int(u),
+                'target': int(v),
+                'weight': float(d.get('weight', 1.0))
+            })
 
     emprendimientos_data = []
     for _, emp in emprendimientos.iterrows():
@@ -505,10 +522,12 @@ def recommend_emprendimientos(request):
     except IndexError:
         return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
 
+    from sklearn.preprocessing import normalize
+    embeddings = normalize(embeddings)  # Normalizar embeddings
     target_embedding = embeddings[target_idx].reshape(1, -1)
     similarities = cosine_similarity(target_embedding, embeddings)[0]
     sorted_indices = np.argsort(similarities)[::-1]
-    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento][:15]
+    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento and similarities[i] > 0.1][:20]  # Aumentar a 20 y añadir umbral
 
     recommendations = []
     for idx in sorted_indices:
