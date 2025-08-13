@@ -345,7 +345,7 @@ def predicciones(request):
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
 
     # Procesar embeddings
-    W_DESC, W_PUB, W_COM = 0.7, 0.2, 0.1  # Aumentar peso de la descripción
+    W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2  # Aumentar peso de la descripción
     node_ids = sorted(G.nodes())
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
@@ -378,7 +378,7 @@ def predicciones(request):
         for j, nid in enumerate(has_num):
             G.nodes[nid]['scaled_num'] = scaled[j]
 
-    A, B = 0.2, 0.8  # Reducir peso de características numéricas
+    A, B = 0.4, 0.6  # Reducir peso de características numéricas
     for nid in node_ids:
         num = G.nodes[nid].get('scaled_num', np.zeros_like(text_feats[0], dtype=np.float32))
         txt = G.nodes[nid]['text_features']
