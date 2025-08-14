@@ -639,5 +639,84 @@ def generate_pdf_report(request):
     
     return response
 
+
+
+"""
+
+    FUNCIÓN DE LA PESTAÑA EVALUACIÓN
+
+
+"""
+
 def evaluacion(request):
-    return render(request, 'simulacion/evaluacion.html')
+    global SHARED_DATA
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Cargar el modelo
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = GraphSAGE(in_channels=120, hidden_channels=256, out_channels=128).to(device)
+    model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+
+    # Cargar test_data si no está en SHARED_DATA
+    if 'test_data' not in SHARED_DATA:
+        # Aquí debes cargar tus datos de prueba. Ejemplo:
+        from torch_geometric.data import Data
+        test_data = Data(
+            x=torch.randn(100, 120),  # Ajusta según tus datos reales
+            edge_index=torch.tensor([[0, 1], [1, 2]], dtype=torch.long),
+            edge_label=torch.tensor([1, 0], dtype=torch.float),
+            edge_label_index=torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
+        )
+        SHARED_DATA['test_data'] = test_data
+
+    test_data = SHARED_DATA['test_data'].to(device)
+    
+    # Generar predicciones
+    with torch.no_grad():
+        h = model(test_data.x, test_data.edge_index)
+        pred = model.predict(h[test_data.edge_label_index[0]], h[test_data.edge_label_index[1]])
+        pred_np = pred.cpu().numpy()
+        pred_binary = (pred_np > 0.5).astype(int)  # Umbral por default
+
+    # Calcular métricas
+    if hasattr(test_data, 'edge_label'):
+        y_np = test_data.edge_label.cpu().numpy()
+        from sklearn.metrics import precision_score, f1_score, recall_score, roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
+        precision = precision_score(y_np, pred_binary)
+        recall = recall_score(y_np, pred_binary)
+        f1 = f1_score(y_np, pred_binary)
+        auc = roc_auc_score(y_np, pred_np)
+        ap = average_precision_score(y_np, pred_np)
+        conf_matrix = confusion_matrix(y_np, pred_binary).tolist()  # Para heatmap
+        fpr, tpr, _ = roc_curve(y_np, pred_np)
+        pr_precision, pr_recall, _ = precision_recall_curve(y_np, pred_np)
+        
+        # Datos para gráficos
+        roc_data = {'fpr': fpr.tolist(), 'tpr': tpr.tolist()}
+        pr_data = {'precision': pr_precision.tolist(), 'recall': pr_recall.tolist()}
+        pred_dist = pred_np.tolist()  # Para histograma
+        
+        metrics = {
+            'precision': precision,
+            'recall': recall,
+            'f1': f1,
+            'auc': auc,
+            'ap': ap
+        }
+    else:
+        metrics = {}
+        conf_matrix = []
+        roc_data = {}
+        pr_data = {}
+        pred_dist = []
+
+    return render(request, 'simulacion/evaluacion.html', {
+        'metrics': metrics,
+        'conf_matrix': json.dumps(conf_matrix),
+        'roc_data': json.dumps(roc_data),
+        'pr_data': json.dumps(pr_data),
+        'pred_dist': json.dumps(pred_dist)
+    })
