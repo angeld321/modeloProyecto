@@ -770,7 +770,7 @@ def _curves(y_true, y_score):
             "precision": [float(x) for x in precision],
             "recall": [float(x) for x in recall],
             "thresholds": [float(x) for x in pr_th] if pr_th is not None and len(pr_th) > 0 else [],
-        }
+        },        
     }
 
 def _histogram(y_score, bins=20):
@@ -897,10 +897,22 @@ def evaluacion_data(request):
             "val_recall": history.get("val_metrics", {}).get("recall", []),
         }
 
+        # Formato extra para el frontend (evitar undefined.epochs)
+        f1_history = {
+            "epochs": hist_out["epochs"],
+            "values": hist_out["val_f1"]
+        }
+        loss_history = {
+            "epochs": hist_out["epochs"],
+            "values": hist_out["train_loss"]
+        }
+
         return JsonResponse(clean_for_json({
             "status": "ok",
             "model_name": model_name,
             "history": hist_out,
+            "f1_history": f1_history,        
+            "loss_history": loss_history,    
             "test_metrics_saved": test_metrics,
             "metrics": metrics,
             "roc": curves["roc"],

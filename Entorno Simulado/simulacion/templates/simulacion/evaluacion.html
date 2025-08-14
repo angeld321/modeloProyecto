@@ -79,29 +79,32 @@
       </div>
     </div>
 
-    <!-- ROC and PR Curves Section -->
-    <div class="col-12 col-xl-8">
-      <div class="card shadow-lg border-0 h-100">
-        <div class="card-header bg-primary text-white">
-          <h5 class="card-title mb-0">Curvas ROC & Precision-Recall</h5>
-        </div>
-        <div class="card-body">
-          <div class="row g-4">
-            <div class="col-12 col-md-6">
-              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#rocModal">
-                <canvas id="chart-roc" style="max-height: 400px;"></canvas>
-                <div class="position-absolute top-0 end-0 p-2">
-                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
-                </div>
-              </div>
+<!-- ROC, PR, F1 y Loss Section -->
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-lg border-0 h-100">
+      <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">Curvas ROC, Precision-Recall, F1-Score y Pérdida</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;">
+              <canvas id="chart-roc" style="max-height: 400px;"></canvas>
             </div>
-            <div class="col-12 col-md-6">
-              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#prModal">
-                <canvas id="chart-pr" style="max-height: 400px;"></canvas>
-                <div class="position-absolute top-0 end-0 p-2">
-                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
-                </div>
-              </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;">
+              <canvas id="chart-pr" style="max-height: 400px;"></canvas>
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-3 bg-white shadow-sm position-relative">
+              <canvas id="chart-f1" style="max-height: 400px;"></canvas>
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-3 bg-white shadow-sm position-relative">
+              <canvas id="chart-loss" style="max-height: 400px;"></canvas>
             </div>
           </div>
         </div>
@@ -356,6 +359,52 @@
     ctx.style.height = canvasId === "chart-pr-modal" ? '600px' : '400px';
   }
 
+  function drawF1Score(f1Data) {
+    const ctx = document.getElementById("chart-f1");
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: f1Data.epochs,
+        datasets: [{
+          label: "F1-Score",
+          data: f1Data.values,
+          borderColor: 'purple',
+          fill: false
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Época" } },
+          y: { title: { display: true, text: "F1-Score" }, min: 0, max: 1 }
+        }
+      }
+    });
+  }
+
+  function drawLoss(lossData) {
+    const ctx = document.getElementById("chart-loss");
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: lossData.epochs,
+        datasets: [{
+          label: "Pérdida de Entrenamiento",
+          data: lossData.values,
+          borderColor: 'red',
+          fill: false
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: "Época" } },
+          y: { title: { display: true, text: "Loss" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
+
+
   function drawHist(hist) {
     const ctx = $("#chart-hist");
     if (histChart) histChart.destroy();
@@ -503,7 +552,9 @@
     drawPR(data.pr);
     drawHist(data.hist);
     fillErrorsTable(data.errors);
-    drawErrorGraph(data.error_graph);
+    drawErrorGraph(data.error_graph); 
+    drawF1Score(data.f1_history);
+    drawLoss(data.loss_history);
   }
 
   async function recalcThreshold() {
