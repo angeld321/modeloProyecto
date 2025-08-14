@@ -79,12 +79,12 @@
 
     <!-- Histograma -->
     <div class="col-12 col-xl-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <h5 class="card-title">Distribución de Predicciones</h5>
-          <canvas id="chart-hist"></canvas>
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">Distribución de Predicciones</h5>
+                <canvas id="chart-hist" style="max-height: 300px;"></canvas>
+            </div>
         </div>
-      </div>
     </div>
 
     <!-- Errores (FP/FN) + mini grafo -->
@@ -186,60 +186,114 @@
   function drawROC(rocData) {
     const ctx = $("#chart-roc");
     if (rocChart) rocChart.destroy();
+    console.log("ROC Data:", rocData); // Debug: Verificar datos ROC
     rocChart = new Chart(ctx, {
       type: "line",
       data: {
         labels: rocData.fpr,
-        datasets: [{ label: "ROC (TPR vs FPR)", data: rocData.tpr }]
+        datasets: [{
+          label: "ROC (TPR vs FPR)",
+          data: rocData.tpr,
+          borderColor: 'blue',
+          fill: false,
+          pointRadius: 0
+        }]
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         scales: {
-          x: { title: { display: true, text: "FPR" }, min: 0, max: 1 },
-          y: { title: { display: true, text: "TPR" }, min: 0, max: 1 }
+          x: { title: { display: true, text: "False Positive Rate" }, min: 0, max: 1 },
+          y: { title: { display: true, text: "True Positive Rate" }, min: 0, max: 1 }
+        },
+        plugins: {
+          legend: { display: true }
         }
       }
     });
   }
 
-  function drawPR(prData) {
-    const ctx = $("#chart-pr");
-    if (prChart) prChart.destroy();
-    prChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: prData.recall,
-        datasets: [{ label: "PR (Precision vs Recall)", data: prData.precision }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { title: { display: true, text: "Recall" }, min: 0, max: 1 },
-          y: { title: { display: true, text: "Precision" }, min: 0, max: 1 }
-        }
-      }
-    });
+function drawPR(prData) {
+  const ctx = $("#chart-pr");
+  if (prChart) prChart.destroy();
+  console.log("PR Data:", prData); // Debug: Verificar datos PR
+  if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
+    console.warn("PR curve data is empty or invalid");
+    return;
   }
+  const dataPoints = prData.recall.map((recall, i) => ({
+    x: recall,
+    y: prData.precision[i]
+  }));
+  prChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [{
+        label: "Precision-Recall",
+        data: dataPoints,
+        borderColor: 'green',
+        fill: false,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true, // Cambiado a true para consistencia
+      animation: false, // Desactivar animaciones también aquí
+      scales: {
+        x: { 
+          type: 'linear',
+          title: { display: true, text: "Recall" },
+          min: 0,
+          max: 1
+        },
+        y: { 
+          title: { display: true, text: "Precision" },
+          min: 0,
+          max: 1
+        }
+      },
+      plugins: { legend: { display: true } },
+      devicePixelRatio: 1 // Limitar resolución
+    }
+  });
+  ctx.style.width = '100%';
+  ctx.style.height = '300px'; // Altura fija para consistencia
+}
 
-  function drawHist(hist) {
-    const ctx = $("#chart-hist");
-    if (histChart) histChart.destroy();
-    histChart = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: hist.bin_centers.map(v => Number(v).toFixed(2)),
-        datasets: [{ label: "Frecuencia", data: hist.counts }]
+function drawHist(hist) {
+  const ctx = $("#chart-hist");
+  if (histChart) histChart.destroy();
+  console.log("Histogram Data:", hist); // Debug: Verificar datos histograma
+  histChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: hist.bin_centers.map(v => Number(v).toFixed(2)),
+      datasets: [{
+        label: "Frecuencia",
+        data: hist.counts,
+        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true, // Mantener proporciones para evitar redimensionamiento excesivo
+      animation: false, // Desactivar animaciones para mejorar rendimiento
+      scales: {
+        x: { title: { display: true, text: "Probabilidad" } },
+        y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { title: { display: true, text: "Probabilidad" } },
-          y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
-        }
-      }
-    });
-  }
+      plugins: { legend: { display: false } },
+      // Limitar resolución del lienzo
+      devicePixelRatio: 1, // Evitar renderizado en alta resolución
+    }
+  });
+  // Forzar tamaño fijo del lienzo
+  ctx.style.width = '100%';
+  ctx.style.height = '300px'; // Altura fija para evitar lienzos gigantes
+}
 
   function fillErrorsTable(errors) {
     const body = $("#errors-body");
@@ -374,19 +428,6 @@
     fillMetricsTable(js.metrics);
   }
 
-  async function loadAndRender() {
-    try {
-        const data = await fetchData(modelSelect.value);
-        updateAll(data);
-        // Al cambiar modelo, resetea radar
-        if (radarChart) radarChart.destroy();
-        compareSelect.value = "";
-    } catch (e) {
-        showLoader(false);
-        alert(e.message || e);
-    }
-  }
-
   async function compareModels() {
     const other = compareSelect.value;
     if (!other) {
@@ -416,13 +457,15 @@
       data: {
         labels,
         datasets: [
-          { label: modelSelect.value, data: d1 },
-          { label: js.model_name, data: d2 }
+          { label: modelSelect.value, data: d1, borderColor: 'blue', backgroundColor: 'rgba(0, 0, 255, 0.1)' },
+          { label: js.model_name, data: d2, borderColor: 'red', backgroundColor: 'rgba(255, 0, 0, 0.1)' }
         ]
       },
       options: {
         responsive: true,
-        scales: { r: { min: 0, max: 1 } }
+        maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 1 } },
+        plugins: { legend: { display: true } }
       }
     });
   }
@@ -435,6 +478,20 @@
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     a.remove(); URL.revokeObjectURL(url);
+  }
+
+
+  async function loadAndRender() {
+    try {
+        const data = await fetchData(modelSelect.value);
+        updateAll(data);
+        // Al cambiar modelo, resetea radar
+        if (radarChart) radarChart.destroy();
+        compareSelect.value = "";
+    } catch (e) {
+        showLoader(false);
+        alert(e.message || e);
+    }
   }
 
   $("#btn-export-metrics").addEventListener("click", () => {
@@ -455,6 +512,15 @@
   compareSelect.addEventListener("change", compareModels);
 
   // Inicial
+  async function loadAndRender() {
+    try {
+      const data = await fetchData(modelSelect.value);
+      updateAll(data);
+    } catch (e) {
+      showLoader(false);
+      alert(e.message || e);
+    }
+  }
   loadAndRender();
 })();
 </script>

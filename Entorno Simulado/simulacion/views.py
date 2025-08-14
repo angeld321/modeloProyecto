@@ -769,7 +769,7 @@ def _curves(y_true, y_score):
         "pr": {
             "precision": [float(x) for x in precision],
             "recall": [float(x) for x in recall],
-            "thresholds": [float(x) for x in pr_th] if pr_th is not None else [],
+            "thresholds": [float(x) for x in pr_th] if pr_th is not None and len(pr_th) > 0 else [],
         }
     }
 
@@ -777,8 +777,12 @@ def _histogram(y_score, bins=20):
     """
     Histograma simple en [0,1] para Chart.js tipo 'bar'.
     """
-    counts, edges = np.histogram(y_score, bins=bins, range=(0.0, 1.0))
+    if len(y_score) == 0:
+        print("Advertencia: y_score está vacío, devolviendo histograma vacío")
+        return {"bin_centers": [], "counts": []}
+    counts, edges = np.histogram(y_score, bins=min(bins, 20), range=(0.0, 1.0))
     centers = 0.5 * (edges[:-1] + edges[1:])
+    print("Histogram bins:", len(centers), "Counts:", counts) # Debug
     return {
         "bin_centers": [float(x) for x in centers],
         "counts": [int(c) for c in counts]
