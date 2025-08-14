@@ -13,7 +13,7 @@
   <div class="row g-4">
     <!-- Graph Container (Left, 70%) -->
     <div class="col-md-8">
-      <div class="card shadow-sm border-0 h-100">
+      <div class="card shadow-sm border" style="border-color: black; border-width: 2px;">
         <div class="card-body p-0 position-relative">
           <div id="insight-text" class="position-absolute top-0 start-0 m-3 bg-white bg-opacity-75 p-2 rounded shadow-sm">
             ⚠️ Selecciona un emprendimiento para ver insights.
@@ -21,7 +21,7 @@
           <div id="graph-error" class="alert alert-warning m-3" style="display: none;">
             No se pudieron cargar los datos del grafo. Verifica la consola para más detalles.
           </div>
-          <div id="graph" style="width: 100%; height: 100%; min-height: 70vh; background: #f8f9fa;"></div>
+          <div id="graph" style="width: 100%; height: 100%; min-height: 60vh; background: #f8f9fa;"></div>
         </div>
       </div>
     </div>
@@ -108,7 +108,7 @@
               <button class="nav-link" data-bs-toggle="tab" data-bs-target="#community">Comunidad</button>
             </li>
           </ul>
-          <div class="tab-content p-3">
+          <div class="tab-content p-2" style="max-height: 50vh; overflow-y: auto;">
             <div class="tab-pane fade show active" id="summary">
               <h5 class="fw-bold mb-3">Resumen del Emprendimiento</h5>
               <div id="summary-content">
@@ -398,21 +398,27 @@ function updateGraph() {
           (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
         d3.select(this).attr('opacity', 1);
       }
-      d3.select(this).attr('data-bs-toggle', 'tooltip')
-        .attr('data-bs-title', `
+      const tooltip = new bootstrap.Tooltip(this, {
+        title: `
           <strong>${d.nombre_emprendimiento || 'Sin nombre'}</strong><br>
           Seguidores: ${d.seguidores || 0}<br>
           Popularidad: ${(d.total_likes || 0).toFixed(2)}<br>
           Conectividad: ${(d.degree_centrality || 0).toFixed(2)}
-        `);
-      bootstrap.Tooltip.getOrCreateInstance(this).show();
+        `,
+        html: true,
+        placement: 'top'
+      });
+      tooltip.show();
     })
     .on('mouseout', function(event, d) {
       if (highlightedConnection &&
           (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
         d3.select(this).attr('opacity', 0.3);
       }
-      bootstrap.Tooltip.getOrCreateInstance(this).hide();
+      const tooltip = bootstrap.Tooltip.getInstance(this);
+      if (tooltip) {
+        tooltip.dispose();
+      }
     })
     .on('click', (event, d) => selectNode(d.id));
 
@@ -521,15 +527,13 @@ function updateSidebar() {
     const recContent = document.getElementById('recommendations-content');
     if (data.status === 'success' && data.recommendations && data.recommendations.length > 0) {
       recContent.innerHTML = data.recommendations.map(rec => `
-        <div class="card mb-2">
-          <div class="card-body">
-            <h6 class="card-title">${rec.nombre || 'Sin nombre'} (ID: ${rec.id})</h6>
-            <p class="card-text"><strong>Similitud:</strong> ${(rec.similitud * 100).toFixed(1)}%</p>
-            <p class="card-text"><strong>Temáticas:</strong> ${rec.tematicas?.join(', ') || 'N/A'}</p>
-            <button onclick="viewConnection(${rec.id})" class="btn btn-outline-primary btn-sm">
-              <i class="bi bi-link-45deg me-2"></i>Ver Conexión
-            </button>
-          </div>
+        <div class="mb-2 p-2 border rounded">
+          <h6 class="mb-1">${rec.nombre || 'Sin nombre'} (ID: ${rec.id})</h6>
+          <p class="mb-1"><strong>Similitud:</strong> ${(rec.similitud * 100).toFixed(1)}%</p>
+          <p class="mb-1"><strong>Temáticas:</strong> ${rec.tematicas?.join(', ') || 'N/A'}</p>
+          <button onclick="viewConnection(${rec.id})" class="btn btn-outline-primary btn-sm w-100">
+            <i class="bi bi-link-45deg me-2"></i>Ver Conexión
+          </button>
         </div>
       `).join('');
     } else {
@@ -555,18 +559,6 @@ function updateSidebar() {
     ${topEmps.map(emp => `<p>${emp.nombre_emprendimiento || 'Sin nombre'} (Centralidad: ${(emp.betweenness_centrality || 0).toFixed(2)})</p>`).join('')}
     <p><strong>Insight:</strong> Esta comunidad tiene alta densidad en ${selectedNode.tematicas?.[0] || 'temáticas variadas'}.</p>
   `;
-
-  const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
-  graphData.links.forEach(link => {
-    const sourceNode = graphData.nodes.find(n => n.id === (typeof link.source === 'object' ? link.source.id : link.source));
-    const targetNode = graphData.nodes.find(n => n.id === (typeof link.target === 'object' ? link.target.id : link.target));
-    if (sourceNode && targetNode) {
-      const com1 = sourceNode.comunidad_louvain;
-      const com2 = targetNode.comunidad_louvain;
-      heatmapData[com1][com2] += link.weight || 1;
-      heatmapData[com2][com1] += link.weight || 1;
-    }
-  });
 
   const heatmapCtx = document.getElementById('heatmap-chart').getContext('2d');
   if (heatmapCtx.chart) heatmapCtx.chart.destroy();
