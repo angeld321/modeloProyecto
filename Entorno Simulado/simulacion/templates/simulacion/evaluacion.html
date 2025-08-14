@@ -79,32 +79,45 @@
       </div>
     </div>
 
-<!-- ROC, PR, F1 y Loss Section -->
-  <div class="col-12 col-xl-8">
-    <div class="card shadow-lg border-0 h-100">
-      <div class="card-header bg-primary text-white">
-        <h5 class="card-title mb-0">Curvas ROC, Precision-Recall, F1-Score y Pérdida</h5>
-      </div>
-      <div class="card-body">
-        <div class="row g-4">
-          <div class="col-12 col-md-6">
-            <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;">
-              <canvas id="chart-roc" style="max-height: 400px;"></canvas>
+    <!-- ROC, PR, F1 y Loss Section -->
+    <div class="col-12 col-xl-8">
+      <div class="card shadow-lg border-0 h-100">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Curvas ROC, Precision-Recall, F1-Score y Pérdida</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-4">
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#rocModal">
+                <canvas id="chart-roc" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="col-12 col-md-6">
-            <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;">
-              <canvas id="chart-pr" style="max-height: 400px;"></canvas>
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#prModal">
+                <canvas id="chart-pr" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="col-12 col-md-6">
-            <div class="border rounded p-3 bg-white shadow-sm position-relative">
-              <canvas id="chart-f1" style="max-height: 400px;"></canvas>
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#f1Modal">
+                <canvas id="chart-f1" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="col-12 col-md-6">
-            <div class="border rounded p-3 bg-white shadow-sm position-relative">
-              <canvas id="chart-loss" style="max-height: 400px;"></canvas>
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#lossModal">
+                <canvas id="chart-loss" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -217,6 +230,36 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal para Curva F1-Score -->
+  <div class="modal fade" id="f1Modal" tabindex="-1" aria-labelledby="f1ModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="f1ModalLabel">Curva F1-Score</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <canvas id="chart-f1-modal" style="max-height: 600px; width: 100%;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para Curva Pérdida de Entrenamiento -->
+  <div class="modal fade" id="lossModal" tabindex="-1" aria-labelledby="lossModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="lossModalLabel">Pérdida de Entrenamiento</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <canvas id="chart-loss-modal" style="max-height: 600px; width: 100%;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Librerías -->
@@ -244,7 +287,8 @@
   const thresholdLabel = $("#threshold-label");
 
   // Charts
-  let rocChart, prChart, histChart, radarChart, rocModalChart, prModalChart;
+  let rocChart, prChart, f1Chart, lossChart, histChart, radarChart;
+  let rocModalChart, prModalChart, f1ModalChart, lossModalChart;
 
   // Estado global actual
   let CURRENT = {
@@ -252,8 +296,10 @@
     metrics: null,
     hist: null,
     errors: null,
-    roc: null, // Almacenar datos ROC
-    pr: null   // Almacenar datos PR
+    roc: null,
+    pr: null,
+    f1_history: null,
+    loss_history: null
   };
 
   function showLoader(flag) {
@@ -277,7 +323,7 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-roc" && rocChart) rocChart.destroy();
     if (canvasId === "chart-roc-modal" && rocModalChart) rocModalChart.destroy();
-    console.log("ROC Data:", rocData); // Debug: Verificar datos ROC
+    console.log("ROC Data:", rocData);
     const chart = new Chart(ctx, {
       type: "line",
       data: {
@@ -312,7 +358,7 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-pr" && prChart) prChart.destroy();
     if (canvasId === "chart-pr-modal" && prModalChart) prModalChart.destroy();
-    console.log("PR Data:", prData); // Debug: Verificar datos PR
+    console.log("PR Data:", prData);
     if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
       console.warn("PR curve data is empty or invalid");
       return;
@@ -359,9 +405,16 @@
     ctx.style.height = canvasId === "chart-pr-modal" ? '600px' : '400px';
   }
 
-  function drawF1Score(f1Data) {
-    const ctx = document.getElementById("chart-f1");
-    new Chart(ctx, {
+  function drawF1Score(f1Data, canvasId = "chart-f1") {
+    const ctx = $(`#${canvasId}`);
+    if (canvasId === "chart-f1" && f1Chart) f1Chart.destroy();
+    if (canvasId === "chart-f1-modal" && f1ModalChart) f1ModalChart.destroy();
+    console.log("F1-Score Data:", f1Data);
+    if (!f1Data.epochs || !f1Data.values || f1Data.epochs.length === 0 || f1Data.values.length === 0) {
+      console.warn("F1-Score data is empty or invalid");
+      return;
+    }
+    const chart = new Chart(ctx, {
       type: "line",
       data: {
         labels: f1Data.epochs,
@@ -369,21 +422,36 @@
           label: "F1-Score",
           data: f1Data.values,
           borderColor: 'purple',
-          fill: false
+          fill: false,
+          pointRadius: 0
         }]
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
           x: { title: { display: true, text: "Época" } },
           y: { title: { display: true, text: "F1-Score" }, min: 0, max: 1 }
-        }
+        },
+        plugins: { legend: { display: true } }
       }
     });
+    if (canvasId === "chart-f1") f1Chart = chart;
+    if (canvasId === "chart-f1-modal") f1ModalChart = chart;
+    ctx.style.width = '100%';
+    ctx.style.height = canvasId === "chart-f1-modal" ? '600px' : '400px';
   }
 
-  function drawLoss(lossData) {
-    const ctx = document.getElementById("chart-loss");
-    new Chart(ctx, {
+  function drawLoss(lossData, canvasId = "chart-loss") {
+    const ctx = $(`#${canvasId}`);
+    if (canvasId === "chart-loss" && lossChart) lossChart.destroy();
+    if (canvasId === "chart-loss-modal" && lossModalChart) lossModalChart.destroy();
+    console.log("Loss Data:", lossData);
+    if (!lossData.epochs || !lossData.values || lossData.epochs.length === 0 || lossData.values.length === 0) {
+      console.warn("Loss data is empty or invalid");
+      return;
+    }
+    const chart = new Chart(ctx, {
       type: "line",
       data: {
         labels: lossData.epochs,
@@ -391,24 +459,30 @@
           label: "Pérdida de Entrenamiento",
           data: lossData.values,
           borderColor: 'red',
-          fill: false
+          fill: false,
+          pointRadius: 0
         }]
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
           x: { title: { display: true, text: "Época" } },
           y: { title: { display: true, text: "Loss" }, beginAtZero: true }
-        }
+        },
+        plugins: { legend: { display: true } }
       }
     });
+    if (canvasId === "chart-loss") lossChart = chart;
+    if (canvasId === "chart-loss-modal") lossModalChart = chart;
+    ctx.style.width = '100%';
+    ctx.style.height = canvasId === "chart-loss-modal" ? '600px' : '400px';
   }
-
-
 
   function drawHist(hist) {
     const ctx = $("#chart-hist");
     if (histChart) histChart.destroy();
-    console.log("Histogram Data:", hist); // Debug: Verificar datos histograma
+    console.log("Histogram Data:", hist);
     histChart = new Chart(ctx, {
       type: "bar",
       data: {
@@ -542,19 +616,21 @@
     CURRENT.metrics = data.metrics;
     CURRENT.hist = data.hist;
     CURRENT.errors = { fp: data.errors.fp, fn: data.errors.fn };
-    CURRENT.roc = data.roc; // Almacenar datos ROC
-    CURRENT.pr = data.pr;   // Almacenar datos PR
+    CURRENT.roc = data.roc;
+    CURRENT.pr = data.pr;
+    CURRENT.f1_history = data.f1_history;
+    CURRENT.loss_history = data.loss_history;
 
     thresholdLabel.textContent = Number(thresholdSlider.value).toFixed(2);
 
     fillMetricsTable(data.metrics);
     drawROC(data.roc);
     drawPR(data.pr);
-    drawHist(data.hist);
-    fillErrorsTable(data.errors);
-    drawErrorGraph(data.error_graph); 
     drawF1Score(data.f1_history);
     drawLoss(data.loss_history);
+    drawHist(data.hist);
+    fillErrorsTable(data.errors);
+    drawErrorGraph(data.error_graph);
   }
 
   async function recalcThreshold() {
@@ -647,6 +723,14 @@
     if (CURRENT.pr) drawPR(CURRENT.pr, "chart-pr-modal");
   });
 
+  $("#f1Modal").addEventListener("shown.bs.modal", () => {
+    if (CURRENT.f1_history) drawF1Score(CURRENT.f1_history, "chart-f1-modal");
+  });
+
+  $("#lossModal").addEventListener("shown.bs.modal", () => {
+    if (CURRENT.loss_history) drawLoss(CURRENT.loss_history, "chart-loss-modal");
+  });
+
   // Destruir gráficas de modales cuando se cierran para liberar memoria
   $("#rocModal").addEventListener("hidden.bs.modal", () => {
     if (rocModalChart) rocModalChart.destroy();
@@ -654,6 +738,14 @@
 
   $("#prModal").addEventListener("hidden.bs.modal", () => {
     if (prModalChart) prModalChart.destroy();
+  });
+
+  $("#f1Modal").addEventListener("hidden.bs.modal", () => {
+    if (f1ModalChart) f1ModalChart.destroy();
+  });
+
+  $("#lossModal").addEventListener("hidden.bs.modal", () => {
+    if (lossModalChart) lossModalChart.destroy();
   });
 
   $("#btn-export-metrics").addEventListener("click", () => {
