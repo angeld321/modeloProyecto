@@ -1,131 +1,178 @@
 {% extends 'simulacion/topBar.html' %}
 {% load static %}
+{% load django_bootstrap5 %}
 {% block title %}Entorno Simulado - Evaluación{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-3">
-  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    <h2 class="me-auto mb-0">Dashboard de Evaluación</h2>
+<!-- Carga explícita de Bootstrap CSS para asegurar estilos -->
+{% bootstrap_css %}
 
-    <!-- Selector de modelo -->
-    <div class="input-group" style="max-width: 520px;">
-      <span class="input-group-text">Modelo</span>
-      <select id="model-select" class="form-select">
-        {% for mf in model_files %}
-          <option value="{{ mf }}" {% if mf == default_model %}selected{% endif %}>{{ mf }}</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-outline-primary" id="reload-btn">Cargar</button>
+<div class="container-fluid py-5 bg-light min-vh-100">
+  <!-- Header Section -->
+  <div class="mb-5">
+    <div class="d-flex flex-wrap align-items-center gap-3 border-bottom pb-3">
+      <h1 class="display-6 fw-bold text-primary me-auto">Dashboard de Evaluación</h1>
+      <div class="input-group" style="max-width: 550px;">
+        <span class="input-group-text bg-primary text-white border-0">
+          <i class="bi bi-cpu me-2"></i>Modelo
+        </span>
+        <select id="model-select" class="form-select border-primary">
+          {% for mf in model_files %}
+            <option value="{{ mf }}" {% if mf == default_model %}selected{% endif %}>{{ mf }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary" id="reload-btn">
+          <i class="bi bi-arrow-repeat me-2"></i>Cargar
+        </button>
+      </div>
     </div>
   </div>
 
   <!-- Loader -->
-  <div id="loader" class="alert alert-info d-none">Cargando métricas y gráficas…</div>
+  <div id="loader" class="alert alert-info d-none shadow-sm rounded-pill mx-auto" style="max-width: 500px;" role="alert">
+    <i class="bi bi-hourglass-split me-2"></i>Cargando métricas y gráficas…
+  </div>
 
-  <div class="row g-3">
-    <!-- Métricas básicas -->
+  <!-- Metrics and Controls Section -->
+  <div class="row g-4 mb-5">
     <div class="col-12 col-xl-4">
-      <div class="card shadow-sm h-100">
+      <div class="card shadow-lg border-0 h-100">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Métricas (umbral: <span id="threshold-label" class="badge bg-light text-dark">0.50</span>)</h5>
+        </div>
         <div class="card-body">
-          <h5 class="card-title">Métricas (umbral: <span id="threshold-label">0.50</span>)</h5>
-          <table class="table table-sm align-middle" id="metrics-table">
-            <thead>
+          <table class="table table-sm table-hover" id="metrics-table">
+            <thead class="table-light">
               <tr>
-                <th>Métrica</th><th>Valor</th>
+                <th scope="col">Métrica</th>
+                <th scope="col" class="text-end">Valor</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>Precision</td><td data-k="precision">—</td></tr>
-              <tr><td>Recall</td><td data-k="recall">—</td></tr>
-              <tr><td>F1-Score</td><td data-k="f1">—</td></tr>
-              <tr><td>AUC-ROC</td><td data-k="auc">—</td></tr>
-              <tr><td>Average Precision</td><td data-k="ap">—</td></tr>
-              <tr><td>Accuracy</td><td data-k="accuracy">—</td></tr>
+              <tr><td>Precision</td><td data-k="precision" class="text-end">—</td></tr>
+              <tr><td>Recall</td><td data-k="recall" class="text-end">—</td></tr>
+              <tr><td>F1-Score</td><td data-k="f1" class="text-end">—</td></tr>
+              <tr><td>AUC-ROC</td><td data-k="auc" class="text-end">—</td></tr>
+              <tr><td>Average Precision</td><td data-k="ap" class="text-end">—</td></tr>
+              <tr><td>Accuracy</td><td data-k="accuracy" class="text-end">—</td></tr>
             </tbody>
           </table>
-
-          <div class="mb-2">
-            <label class="form-label">Umbral de predicción</label>
-            <div class="d-flex align-items-center gap-2">
-              <input type="range" min="0" max="1" step="0.01" value="0.5" id="threshold-slider" class="form-range" style="flex:1">
-              <button class="btn btn-sm btn-primary" id="btn-recalc">Recalcular</button>
+          <div class="mt-4">
+            <label class="form-label fw-semibold">Umbral de predicción</label>
+            <div class="d-flex align-items-center gap-3">
+              <input type="range" min="0" max="1" step="0.01" value="0.5" id="threshold-slider" class="form-range">
+              <button class="btn btn-primary btn-sm" id="btn-recalc">
+                <i class="bi bi-calculator me-2"></i>Recalcular
+              </button>
             </div>
           </div>
-
-          <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary btn-sm" id="btn-export-metrics">Exportar CSV Métricas</button>
-            <button class="btn btn-outline-secondary btn-sm" id="btn-export-errors">Exportar CSV Errores</button>
+          <div class="d-flex gap-3 mt-4">
+            <button class="btn btn-outline-primary btn-sm w-100" id="btn-export-metrics">
+              <i class="bi bi-file-earmark-arrow-down me-2"></i>Exportar CSV Métricas
+            </button>
+            <button class="btn btn-outline-primary btn-sm w-100" id="btn-export-errors">
+              <i class="bi bi-file-earmark-arrow-down me-2"></i>Exportar CSV Errores
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Curvas ROC y PR -->
+    <!-- ROC and PR Curves Section -->
     <div class="col-12 col-xl-8">
-      <div class="card shadow-sm h-100">
+      <div class="card shadow-lg border-0 h-100">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Curvas ROC & Precision-Recall</h5>
+        </div>
         <div class="card-body">
-          <h5 class="card-title">Curvas ROC & Precision-Recall</h5>
-          <div class="row g-3">
+          <div class="row g-4">
             <div class="col-12 col-md-6">
-              <canvas id="chart-roc"></canvas>
+              <div class="border rounded p-3 bg-white shadow-sm">
+                <canvas id="chart-roc" style="max-height: 400px;"></canvas>
+              </div>
             </div>
             <div class="col-12 col-md-6">
-              <canvas id="chart-pr"></canvas>
+              <div class="border rounded p-3 bg-white shadow-sm">
+                <canvas id="chart-pr" style="max-height: 400px;"></canvas>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Histograma -->
-    <div class="col-12 col-xl-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="card-title">Distribución de Predicciones</h5>
-                <canvas id="chart-hist" style="max-height: 300px;"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- Errores (FP/FN) + mini grafo -->
+  <!-- Histogram Section -->
+  <div class="row g-4 mb-5">
     <div class="col-12">
-      <div class="card shadow-sm">
+      <div class="card shadow-lg border-0 h-100">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Distribución de Predicciones</h5>
+        </div>
         <div class="card-body">
-          <h5 class="card-title mb-3">Errores Comunes (FP/FN) & Mini-Grafo</h5>
-          <div class="row g-3">
-            <div class="col-12 col-lg-6">
-              <div class="table-responsive" style="max-height: 300px; overflow:auto;">
-                <table class="table table-sm table-striped">
-                  <thead>
-                    <tr><th>#</th><th>Tipo</th><th>Score</th><th>y_true</th><th>u</th><th>v</th></tr>
+          <div class="border rounded p-3 bg-white shadow-sm">
+            <canvas id="chart-hist" style="max-height: 400px;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Errors and Graph Section -->
+  <div class="row g-4 mb-5">
+    <div class="col-12">
+      <div class="card shadow-lg border-0">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Errores Comunes (FP/FN) & Mini-Grafo</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-4">
+            <div class="col-12 col-lg-6 d-flex">
+              <div class="table-responsive border rounded bg-white shadow-sm flex-grow-1" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-sm table-striped mb-0">
+                  <thead class="table-light sticky-top">
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Tipo</th>
+                      <th scope="col">Score</th>
+                      <th scope="col">y_true</th>
+                      <th scope="col">u</th>
+                      <th scope="col">v</th>
+                    </tr>
                   </thead>
                   <tbody id="errors-body"></tbody>
                 </table>
               </div>
             </div>
-            <div class="col-12 col-lg-6">
-              <div id="error-graph" style="width: 100%; height: 340px; border:1px solid #eee; border-radius:8px;"></div>
+            <div class="col-12 col-lg-6 d-flex">
+              <div id="error-graph" class="border rounded bg-white shadow-sm flex-grow-1" style="width: 100%; height: 400px;"></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Comparación con otro modelo -->
+  <!-- Model Comparison Section -->
+  <div class="row g-4">
     <div class="col-12">
-      <div class="card shadow-sm">
+      <div class="card shadow-lg border-0">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Comparación vs. otro modelo</h5>
+        </div>
         <div class="card-body">
-          <h5 class="card-title">Comparación vs. otro modelo</h5>
-          <div class="d-flex align-items-center gap-2 mb-3" style="max-width: 520px;">
-            <span>Comparar con:</span>
-            <select id="compare-select" class="form-select">
+          <div class="d-flex align-items-center gap-3 mb-4" style="max-width: 550px;">
+            <span class="fw-semibold text-dark">Comparar con:</span>
+            <select id="compare-select" class="form-select border-primary">
               <option value="">— Selecciona un modelo —</option>
               {% for mf in model_files %}
                 <option value="{{ mf }}">{{ mf }}</option>
               {% endfor %}
             </select>
           </div>
-          <canvas id="chart-radar"></canvas>
+          <div class="border rounded p-3 bg-white shadow-sm">
+            <canvas id="chart-radar" style="max-height: 400px;"></canvas>
+          </div>
         </div>
       </div>
     </div>
@@ -133,6 +180,7 @@
 </div>
 
 <!-- Librerías -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 
@@ -213,87 +261,85 @@
     });
   }
 
-function drawPR(prData) {
-  const ctx = $("#chart-pr");
-  if (prChart) prChart.destroy();
-  console.log("PR Data:", prData); // Debug: Verificar datos PR
-  if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
-    console.warn("PR curve data is empty or invalid");
-    return;
-  }
-  const dataPoints = prData.recall.map((recall, i) => ({
-    x: recall,
-    y: prData.precision[i]
-  }));
-  prChart = new Chart(ctx, {
-    type: "line",
-    data: {
-      datasets: [{
-        label: "Precision-Recall",
-        data: dataPoints,
-        borderColor: 'green',
-        fill: false,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true, // Cambiado a true para consistencia
-      animation: false, // Desactivar animaciones también aquí
-      scales: {
-        x: { 
-          type: 'linear',
-          title: { display: true, text: "Recall" },
-          min: 0,
-          max: 1
+  function drawPR(prData) {
+    const ctx = $("#chart-pr");
+    if (prChart) prChart.destroy();
+    console.log("PR Data:", prData); // Debug: Verificar datos PR
+    if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
+      console.warn("PR curve data is empty or invalid");
+      return;
+    }
+    const dataPoints = prData.recall.map((recall, i) => ({
+      x: recall,
+      y: prData.precision[i]
+    }));
+    prChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [{
+          label: "Precision-Recall",
+          data: dataPoints,
+          borderColor: 'green',
+          fill: false,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: false,
+        scales: {
+          x: { 
+            type: 'linear',
+            title: { display: true, text: "Recall" },
+            min: 0,
+            max: 1
+          },
+          y: { 
+            title: { display: true, text: "Precision" },
+            min: 0,
+            max: 1
+          }
         },
-        y: { 
-          title: { display: true, text: "Precision" },
-          min: 0,
-          max: 1
-        }
-      },
-      plugins: { legend: { display: true } },
-      devicePixelRatio: 1 // Limitar resolución
-    }
-  });
-  ctx.style.width = '100%';
-  ctx.style.height = '300px'; // Altura fija para consistencia
-}
+        plugins: { legend: { display: true } },
+        devicePixelRatio: 1
+      }
+    });
+    ctx.style.width = '100%';
+    ctx.style.height = '400px';
+  }
 
-function drawHist(hist) {
-  const ctx = $("#chart-hist");
-  if (histChart) histChart.destroy();
-  console.log("Histogram Data:", hist); // Debug: Verificar datos histograma
-  histChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: hist.bin_centers.map(v => Number(v).toFixed(2)),
-      datasets: [{
-        label: "Frecuencia",
-        data: hist.counts,
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true, // Mantener proporciones para evitar redimensionamiento excesivo
-      animation: false, // Desactivar animaciones para mejorar rendimiento
-      scales: {
-        x: { title: { display: true, text: "Probabilidad" } },
-        y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
+  function drawHist(hist) {
+    const ctx = $("#chart-hist");
+    if (histChart) histChart.destroy();
+    console.log("Histogram Data:", hist); // Debug: Verificar datos histograma
+    histChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: hist.bin_centers.map(v => Number(v).toFixed(2)),
+        datasets: [{
+          label: "Frecuencia",
+          data: hist.counts,
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
       },
-      plugins: { legend: { display: false } },
-      // Limitar resolución del lienzo
-      devicePixelRatio: 1, // Evitar renderizado en alta resolución
-    }
-  });
-  // Forzar tamaño fijo del lienzo
-  ctx.style.width = '100%';
-  ctx.style.height = '300px'; // Altura fija para evitar lienzos gigantes
-}
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: false,
+        scales: {
+          x: { title: { display: true, text: "Probabilidad" } },
+          y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
+        },
+        plugins: { legend: { display: false } },
+        devicePixelRatio: 1
+      }
+    });
+    ctx.style.width = '100%';
+    ctx.style.height = '400px';
+  }
 
   function fillErrorsTable(errors) {
     const body = $("#errors-body");
@@ -480,17 +526,15 @@ function drawHist(hist) {
     a.remove(); URL.revokeObjectURL(url);
   }
 
-
   async function loadAndRender() {
     try {
-        const data = await fetchData(modelSelect.value);
-        updateAll(data);
-        // Al cambiar modelo, resetea radar
-        if (radarChart) radarChart.destroy();
-        compareSelect.value = "";
+      const data = await fetchData(modelSelect.value);
+      updateAll(data);
+      if (radarChart) radarChart.destroy();
+      compareSelect.value = "";
     } catch (e) {
-        showLoader(false);
-        alert(e.message || e);
+      showLoader(false);
+      alert(e.message || e);
     }
   }
 
@@ -512,15 +556,6 @@ function drawHist(hist) {
   compareSelect.addEventListener("change", compareModels);
 
   // Inicial
-  async function loadAndRender() {
-    try {
-      const data = await fetchData(modelSelect.value);
-      updateAll(data);
-    } catch (e) {
-      showLoader(false);
-      alert(e.message || e);
-    }
-  }
   loadAndRender();
 })();
 </script>
