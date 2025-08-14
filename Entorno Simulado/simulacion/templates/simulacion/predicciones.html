@@ -14,14 +14,14 @@
     <!-- Graph Container (Left, 70%) -->
     <div class="col-md-8">
       <div class="card shadow-sm border" style="border-color: black; border-width: 2px;">
-        <div class="card-body p-0 position-relative">
+        <div class="card-body p-2 position-relative">
           <div id="insight-text" class="position-absolute top-0 start-0 m-3 bg-white bg-opacity-75 p-2 rounded shadow-sm">
             ⚠️ Selecciona un emprendimiento para ver insights.
           </div>
           <div id="graph-error" class="alert alert-warning m-3" style="display: none;">
             No se pudieron cargar los datos del grafo. Verifica la consola para más detalles.
           </div>
-          <div id="graph" style="width: 100%; height: 100%; min-height: 60vh; background: #f8f9fa;"></div>
+          <div id="graph" style="width: 100%; height: 60vh; background: #f8f9fa; overflow: visible;"></div>
         </div>
       </div>
     </div>
@@ -153,12 +153,14 @@
 /* Minimal custom CSS for specific tweaks */
 #graph {
   width: 100%;
-  height: 100%;
+  height: 60vh;
+  overflow: visible;
 }
 #graph svg {
   width: 100%;
   height: 100%;
   display: block;
+  overflow: visible;
 }
 .tooltip {
   position: absolute;
@@ -175,7 +177,7 @@
 }
 @media (max-width: 768px) {
   #graph {
-    min-height: 50vh;
+    height: 50vh;
   }
   .card-body {
     padding: 1rem;
@@ -275,13 +277,13 @@ document.getElementById('clustering-type').addEventListener('change', (e) => {
 });
 
 const svg = d3.select('#graph').append('svg').attr('width', '100%').attr('height', '100%');
-const width = document.querySelector('#graph').offsetWidth;
-const height = document.querySelector('#graph').offsetHeight;
+let width = document.querySelector('#graph').offsetWidth;
+let height = document.querySelector('#graph').offsetHeight;
 const simulation = d3.forceSimulation()
   .force('link', d3.forceLink().id(d => d.id).distance(150))
   .force('charge', d3.forceManyBody().strength(-300))
   .force('center', d3.forceCenter(width / 2, height / 2))
-  .force('collide', d3.forceCollide().radius(d => Math.sqrt(d.seguidores || 10) + 10));
+  .force('collide', d3.forceCollide().radius(d => Math.sqrt(d.seguidores || 10) + 15));
 
 const zoom = d3.zoom()
   .scaleExtent([0.5, 3])
@@ -290,9 +292,24 @@ const zoom = d3.zoom()
   });
 svg.call(zoom);
 
+// Actualizar dimensiones del SVG al redimensionar la ventana
+window.addEventListener('resize', () => {
+  width = document.querySelector('#graph').offsetWidth;
+  height = document.querySelector('#graph').offsetHeight;
+  svg.attr('width', width).attr('height', height);
+  simulation.force('center', d3.forceCenter(width / 2, height / 2));
+  simulation.alpha(1).restart();
+});
+
 function updateGraph() {
   svg.selectAll('*').remove();
   const g = svg.append('g');
+
+  // Actualizar dimensiones dinámicamente
+  width = document.querySelector('#graph').offsetWidth;
+  height = document.querySelector('#graph').offsetHeight;
+  svg.attr('width', width).attr('height', height);
+  simulation.force('center', d3.forceCenter(width / 2, height / 2));
 
   const minFollowers = +document.getElementById('followers-range').value;
   const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
@@ -424,8 +441,8 @@ function updateGraph() {
 
   simulation.nodes(filteredNodes).on('tick', () => {
     nodes.each(d => {
-      d.x = Math.max(10, Math.min(width - 10, d.x));
-      d.y = Math.max(10, Math.min(height - 10, d.y));
+      d.x = Math.max(20, Math.min(width - 20, d.x));
+      d.y = Math.max(20, Math.min(height - 20, d.y));
     });
 
     links
@@ -559,6 +576,18 @@ function updateSidebar() {
     ${topEmps.map(emp => `<p>${emp.nombre_emprendimiento || 'Sin nombre'} (Centralidad: ${(emp.betweenness_centrality || 0).toFixed(2)})</p>`).join('')}
     <p><strong>Insight:</strong> Esta comunidad tiene alta densidad en ${selectedNode.tematicas?.[0] || 'temáticas variadas'}.</p>
   `;
+
+  const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
+  graphData.links.forEach(link => {
+    const sourceNode = graphData.nodes.find(n => n.id === (typeof link.source === 'object' ? link.source.id : link.source));
+    const targetNode = graphData.nodes.find(n => n.id === (typeof link.target === 'object' ? link.target.id : link.target));
+    if (sourceNode && targetNode) {
+      const com1 = sourceNode.comunidad_louvain;
+      const com2 = targetNode.comunidad_louvain;
+      heatmapData[com1][com2] += link.weight || 1;
+      heatmapData[com2][com1] += link.weight || 1;
+    }
+  });
 
   const heatmapCtx = document.getElementById('heatmap-chart').getContext('2d');
   if (heatmapCtx.chart) heatmapCtx.chart.destroy();
