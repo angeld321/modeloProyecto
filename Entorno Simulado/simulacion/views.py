@@ -734,20 +734,9 @@ def _ensure_predictions_from_ckpt(ckpt):
 
 def _compute_all_metrics(y_true, y_score, threshold=0.5):
     """
-    Calcula precisión, recall, f1, AUC, AP, accuracy y matriz de confusión con un umbral dado.
+    Calcula precisión, recall, f1, AUC, AP y accuracy con un umbral dado.
     """
     y_pred = (y_score >= float(threshold)).astype(np.int32)
-
-    # Matriz de confusión (TN, FP, FN, TP)
-    cm = confusion_matrix(y_true, y_pred, labels=[0,1])
-    if cm.size == 4:
-        tn, fp, fn, tp = cm.ravel()
-    else:
-        # Edge case si falta alguna clase
-        tn = cm[0,0] if cm.shape == (1,1) and y_true.max()==0 else 0
-        fp = cm[0,1] if cm.shape[1]>1 else 0
-        fn = cm[1,0] if cm.shape[0]>1 else 0
-        tp = cm[1,1] if cm.shape==(2,2) else 0
 
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average="binary", zero_division=0
@@ -763,7 +752,6 @@ def _compute_all_metrics(y_true, y_score, threshold=0.5):
         "auc": float(auc),
         "ap": float(ap),
         "accuracy": float(acc),
-        "conf_matrix": [[int(tn), int(fp)], [int(fn), int(tp)]],
     }
 
 def _curves(y_true, y_score):
@@ -851,9 +839,6 @@ def _top_errors(y_true, y_score, edge_label_index=None, top_k=30):
         "error_graph": {"nodes": nodes, "links": links}
     }
 
-
-# ---------- Vistas ----------
-
 @require_GET
 def evaluacion(request):
     """
@@ -868,7 +853,6 @@ def evaluacion(request):
         "default_model": DEFAULT_MODEL_NAME,
         "model_files": models,
     })
-
 
 @require_GET
 def evaluacion_data(request):
@@ -931,7 +915,6 @@ def evaluacion_data(request):
             "message": repr(e)
         }), status=500)
 
-
 @require_POST
 def recalculate_metrics(request):
     """
@@ -967,7 +950,6 @@ def recalculate_metrics(request):
             "status": "error",
             "message": repr(e)
         }), status=500)
-
 
 @require_GET
 def model_summary(request):
