@@ -34,6 +34,20 @@
           <h5 class="card-title mb-0">Controles</h5>
         </div>
         <div class="card-body">
+          <!-- Model Selection -->
+          <div class="input-group mb-3" style="max-width: 550px;">
+            <span class="input-group-text bg-primary text-white border-0">
+              <i class="bi bi-cpu me-2"></i>Modelo
+            </span>
+            <select id="model-select" class="form-select border-primary">
+              {% for mf in model_files %}
+                <option value="{{ mf }}" {% if mf == default_model %}selected{% endif %}>{{ mf }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-primary" id="reload-btn">
+              <i class="bi bi-arrow-repeat me-2"></i>Cargar
+            </button>
+          </div>
           <!-- Search -->
           <div class="mb-3">
             <div class="input-group">
@@ -186,15 +200,24 @@
 </style>
 
 <script>
+// Función para obtener el token CSRF
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+const csrftoken = getCookie('csrftoken');
+
 // Función para obtener datos de localStorage o del servidor
-function loadGraphData() {
+async function loadGraphData(modelName) {
   const storedData = localStorage.getItem('prediccionesGraphData');
   const storedTimestamp = localStorage.getItem('prediccionesTimestamp');
+  const storedModel = localStorage.getItem('prediccionesModel');
   const currentTime = new Date().getTime();
   const cacheDuration = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
 
   let graphData, emprendimientosData, tematicasData, nCommunities;
-  if (storedData && storedTimestamp && (currentTime - storedTimestamp < cacheDuration)) {
+  if (storedData && storedTimestamp && storedModel === modelName && (currentTime - storedTimestamp < cacheDuration)) {
     const data = JSON.parse(storedData);
     graphData = data.graphData;
     emprendimientosData = data.emprendimientosData;
@@ -202,24 +225,32 @@ function loadGraphData() {
     nCommunities = data.nCommunities;
   } else {
     try {
-      graphData = JSON.parse('{{ graph_data|escapejs }}');
-      emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
-      tematicasData = JSON.parse('{{ tematicas|escapejs }}');
-      nCommunities = Number('{{ n_communities|escapejs }}');
+      const url = new URL("{% url 'simulacion:predicciones_data' %}", window.location.origin);
+      url.searchParams.set("model", modelName);
+      const response = await fetch(url.toString());
+      const data = await response.json();
+      if (data.status !== 'ok') throw new Error(data.message || 'Error al cargar los datos');
+      graphData = data.graph_data;
+      emprendimientosData = data.emprendimientos;
+      tematicasData = data.tematicas;
+      nCommunities = data.n_communities;
+      const dataToStore = { graphData, emprendimientosData, tematicasData, nCommunities };
+      localStorage.setItem('prediccionesGraphData', JSON.stringify(dataToStore));
+      localStorage.setItem('prediccionesTimestamp', currentTime);
+      localStorage.setItem('prediccionesModel', modelName);
     } catch (e) {
-      console.error('Error al parsear datos del servidor:', e);
+      console.error('Error al cargar datos del servidor:', e);
       document.getElementById('graph-error').style.display = 'block';
+      document.getElementById('graph-error').textContent = `Error: ${e.message}`;
       return { graphData: { nodes: [], links: [] }, emprendimientosData: [], tematicasData: [], nCommunities: 0 };
     }
-    const dataToStore = { graphData, emprendimientosData, tematicasData, nCommunities };
-    localStorage.setItem('prediccionesGraphData', JSON.stringify(dataToStore));
-    localStorage.setItem('prediccionesTimestamp', currentTime);
   }
 
   // Validar datos
   if (!graphData || !graphData.nodes || !graphData.links || graphData.nodes.length === 0) {
     console.error('Datos del grafo vacíos o inválidos:', graphData);
     document.getElementById('graph-error').style.display = 'block';
+    document.getElementById('graph-error').textContent = 'No se encontraron datos válidos para el grafo.';
     return { graphData: { nodes: [], links: [] }, emprendimientosData: [], tematicasData: [], nCommunities: 0 };
   }
 
@@ -227,10 +258,32 @@ function loadGraphData() {
   return { graphData, emprendimientosData, tematicasData, nCommunities };
 }
 
-// Cargar datos
-const { graphData, emprendimientosData, tematicasData, nCommunities } = loadGraphData();
+// Cargar datos iniciales
+let { graphData, emprendimientosData, tematicasData, nCommunities } = { graphData: { nodes: [], links: [] }, emprendimientosData: [], tematicasData: [], nCommunities: 0 };
 let selectedNode = null;
 let highlightedConnection = null;
+
+const modelSelect = document.getElementById('model-select');
+const reloadBtn = document.getElementById('reload-btn');
+const defaultModel = "{{ default_model }}";
+
+async function loadAndRender() {
+  try {
+    const data = await loadGraphData(modelSelect.value);
+    graphData = data.graphData;
+    emprendimientosData = data.emprendimientosData;
+    tematicasData = data.tematicasData;
+    nCommunities = data.nCommunities;
+    updateGraph();
+    document.getElementById('graph-error').style.display = 'none';
+  } catch (e) {
+    console.error('Error al cargar y renderizar:', e);
+    document.getElementById('graph-error').style.display = 'block';
+    document.getElementById('graph-error').textContent = `Error al cargar el modelo: ${e.message}`;
+  }
+}
+
+reloadBtn.addEventListener('click', loadAndRender);
 
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
@@ -532,9 +585,9 @@ function updateSidebar() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+      'X-CSRFToken': csrftoken
     },
-    body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+    body: `id_emprendimiento=${selectedNode.id_emprendimiento}&model=${modelSelect.value}`
   })
   .then(response => {
     if (!response.ok) throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
@@ -638,9 +691,9 @@ function generateReport() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+      'X-CSRFToken': csrftoken
     },
-    body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+    body: `id_emprendimiento=${selectedNode.id_emprendimiento}&model=${modelSelect.value}`
   })
   .then(response => {
     if (response.ok) return response.blob();
@@ -670,6 +723,7 @@ function showTab(tabId) {
   bootstrap.Tab.getOrCreateInstance(document.querySelector(`[data-bs-target="#${tabId}"]`)).show();
 }
 
-updateGraph();
+// Inicial
+loadAndRender();
 </script>
 {% endblock %}

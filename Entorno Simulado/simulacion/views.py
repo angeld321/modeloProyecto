@@ -259,10 +259,34 @@ class GraphSAGE(torch.nn.Module):
         h = torch.cat([x_src, x_dst], dim=1)
         return torch.sigmoid(self.predictor(h)).view(-1)
 
+# Diccionario global para almacenar datos por modelo
+SHARED_DATA = {}  # Ahora es {model_name: {G, embeddings, node_ids, ...}}
+
 def predicciones(request):
     global SHARED_DATA
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
+    # Obtener lista de modelos disponibles
+    model_dir = os.path.join(BASE_DIR, 'Modelo')
+    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+    if not model_files:
+        return render(request, 'simulacion/predicciones.html', {
+            'error': 'No se encontraron modelos en la carpeta Modelo/'
+        })
+    
+    # Seleccionar modelo por defecto (el más reciente basado en el nombre)
+    default_model = max(model_files, key=lambda x: x.split('__')[-1].replace('.pth', ''))
+    model_name = request.GET.get('model', default_model)
+    
+    if model_name not in model_files:
+        return render(request, 'simulacion/predicciones.html', {
+            'error': f'Modelo {model_name} no encontrado.'
+        })
+
+    # Inicializar SHARED_DATA para este modelo si no existe
+    if model_name not in SHARED_DATA:
+        SHARED_DATA[model_name] = {}
+
     # Cargar datos
     emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
     publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
@@ -315,9 +339,6 @@ def predicciones(request):
         id_emprendimiento = row['id_emprendimiento']
         if id_emprendimiento in G.nodes:
             G.nodes[id_emprendimiento]['seguidores'] = row['cantidad']
-            # No ajustar pesos por seguidores
-            # for emp2 in G.neighbors(id_emprendimiento):
-            #     G[id_emprendimiento][emp2]['weight'] += row['cantidad'] / 1000
 
     # Procesar características
     scaler = MinMaxScaler()
@@ -351,7 +372,7 @@ def predicciones(request):
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
 
     # Procesar embeddings
-    W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2  # Aumentar peso de la descripción
+    W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2
     node_ids = sorted(G.nodes())
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
@@ -365,7 +386,7 @@ def predicciones(request):
         ce = np.nanmean(comm_embs[c_rows.index.values], axis=0) if not c_rows.empty else np.zeros(emb_dim, dtype=np.float32)
         raw_text[i] = W_DESC * de + W_PUB * pe + W_COM * ce
 
-    svd = TruncatedSVD(n_components=120, random_state=42)  # Ajustar a 120 para coincidir con el modelo
+    svd = TruncatedSVD(n_components=120, random_state=42)
     text_feats = svd.fit_transform(raw_text)
     for i, nid in enumerate(node_ids):
         G.nodes[nid]['text_features'] = text_feats[i]
@@ -384,7 +405,7 @@ def predicciones(request):
         for j, nid in enumerate(has_num):
             G.nodes[nid]['scaled_num'] = scaled[j]
 
-    A, B = 0.4, 0.6  # Reducir peso de características numéricas
+    A, B = 0.4, 0.6
     for nid in node_ids:
         num = G.nodes[nid].get('scaled_num', np.zeros_like(text_feats[0], dtype=np.float32))
         txt = G.nodes[nid]['text_features']
@@ -405,36 +426,42 @@ def predicciones(request):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     in_channels = x.shape[1]
     model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
-    model_path = os.path.join(BASE_DIR, 'Modelo/modelo_Entorno__20250813_224446.pth')
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
+    model_path = os.path.join(BASE_DIR, 'Modelo', model_name)
+    try:
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+    except Exception as e:
+        return render(request, 'simulacion/predicciones.html', {
+            'error': f'Error al cargar el modelo {model_name}: {str(e)}'
+        })
 
-# Generar embeddings
+    # Generar embeddings
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device)).cpu().numpy()
 
     # Computar múltiples métodos de clustering en embeddings
     z = embeddings
-    n_clusters = len(tematicas)  # Ajustar al número de temáticas para mejor concordancia
-    # K-Means
+    n_clusters = len(tematicas)
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     kmeans_labels = kmeans.fit_predict(z)
-    # Agglomerative Clustering
     agglomerative = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
     agg_labels = agglomerative.fit_predict(z)
-    # DBSCAN (para detectar outliers)
     dbscan = DBSCAN(eps=0.5, min_samples=5)
     dbscan_labels = dbscan.fit_predict(z)
 
     # Almacenar datos para recommend_emprendimientos
-    SHARED_DATA['G'] = G
-    SHARED_DATA['embeddings'] = embeddings
-    SHARED_DATA['node_ids'] = node_ids
-    SHARED_DATA['emprendimientos'] = emprendimientos
-    SHARED_DATA['emprendimiento_tematica'] = emprendimiento_tematica
-    SHARED_DATA['tematicas'] = tematicas
-    SHARED_DATA['municipios'] = municipios
+    SHARED_DATA[model_name] = {
+        'G': G,
+        'embeddings': embeddings,
+        'node_ids': node_ids,
+        'emprendimientos': emprendimientos,
+        'emprendimiento_tematica': emprendimiento_tematica,
+        'tematicas': tematicas,
+        'municipios': municipios,
+        'seguidores': seguidores,
+        'publicaciones': publicaciones
+    }
 
     # Crear datos para el frontend
     partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
@@ -501,6 +528,110 @@ def predicciones(request):
         'municipios': municipios.to_dict('records'),
         'max_followers': max_followers,
         'max_tematicas': max_tematicas,
+        'n_communities': n_communities,
+        'model_files': model_files,
+        'default_model': model_name
+    })
+
+def predicciones_data(request):
+    model_name = request.GET.get('model')
+    if not model_name:
+        return JsonResponse({'status': 'error', 'message': 'Parámetro model no proporcionado'}, status=400)
+    
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    model_path = os.path.join(BASE_DIR, 'Modelo', model_name)
+    if not os.path.exists(model_path):
+        return JsonResponse({'status': 'error', 'message': f'Modelo {model_name} no encontrado'}, status=404)
+
+    if model_name not in SHARED_DATA:
+        # Necesitamos inicializar los datos para este modelo
+        # Temporalmente establecer el parámetro GET para reutilizar la lógica de predicciones
+        request.GET = request.GET.copy()
+        request.GET['model'] = model_name
+        response = predicciones(request)
+        if isinstance(response, HttpResponse):  # Error case
+            return JsonResponse({'status': 'error', 'message': 'Error al inicializar datos para el modelo'}, status=500)
+    
+    # Obtener datos desde SHARED_DATA
+    G = SHARED_DATA[model_name]['G']
+    emprendimientos = SHARED_DATA[model_name]['emprendimientos']
+    emprendimiento_tematica = SHARED_DATA[model_name]['emprendimiento_tematica']
+    tematicas = SHARED_DATA[model_name]['tematicas']
+    municipios = SHARED_DATA[model_name]['municipios']
+    embeddings = SHARED_DATA[model_name]['embeddings']
+    node_ids = SHARED_DATA[model_name]['node_ids']
+    seguidores = SHARED_DATA[model_name]['seguidores']
+    publicaciones = SHARED_DATA[model_name]['publicaciones']
+
+    # Computar clustering nuevamente (por si cambió el grafo)
+    z = embeddings
+    n_clusters = len(tematicas)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans_labels = kmeans.fit_predict(z)
+    agglomerative = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
+    agg_labels = agglomerative.fit_predict(z)
+    dbscan = DBSCAN(eps=0.5, min_samples=5)
+    dbscan_labels = dbscan.fit_predict(z)
+
+    partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
+    n_communities = len(set(partition.values()))
+
+    graph_data = {
+        'nodes': [],
+        'links': []
+    }
+    degree_centrality = nx.degree_centrality(G)
+    betweenness_centrality = nx.betweenness_centrality(G, weight='weight')
+    for i, node in enumerate(node_ids):
+        emp = emprendimientos[emprendimientos.id_emprendimiento == node]
+        if not emp.empty:
+            emp = emp.iloc[0]
+            temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == node]['id_tematica'].tolist()
+            tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
+            seg = int(seguidores[seguidores.id_emprendimiento == node]['cantidad'].values[0]) if node in seguidores.id_emprendimiento.values else 0
+            total_likes = int(publicaciones[publicaciones.id_emprendimiento == node]['n_likes'].sum()) if node in publicaciones.id_emprendimiento.values else 0
+            graph_data['nodes'].append({
+                'id': int(node),
+                'nombre_emprendimiento': emp['nombre_emprendimiento'],
+                'seguidores': seg,
+                'total_likes': total_likes,
+                'id_municipio_origen': int(emp['id_municipio_origen']),
+                'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
+                'tematicas': tema_names,
+                'comunidad_louvain': int(partition[node]),
+                'cluster_kmeans': int(kmeans_labels[i]),
+                'cluster_agglomerative': int(agg_labels[i]),
+                'cluster_dbscan': int(dbscan_labels[i]),
+                'degree_centrality': float(degree_centrality[node]),
+                'betweenness_centrality': float(betweenness_centrality[node])
+            })
+    for u, v, d in G.edges(data=True):
+        if u in node_ids and v in node_ids:
+            graph_data['links'].append({
+                'source': int(u),
+                'target': int(v),
+                'weight': float(d.get('weight', 1.0))
+            })
+
+    emprendimientos_data = []
+    for _, emp in emprendimientos.iterrows():
+        temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == emp['id_emprendimiento']]['id_tematica'].tolist()
+        tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in temas]
+        seg = int(seguidores[seguidores.id_emprendimiento == emp['id_emprendimiento']]['cantidad'].values[0]) if emp['id_emprendimiento'] in seguidores.id_emprendimiento.values else 0
+        emprendimientos_data.append({
+            'id_emprendimiento': int(emp['id_emprendimiento']),
+            'nombre_emprendimiento': emp['nombre_emprendimiento'],
+            'descripcion': emp['descripcion'] if pd.notna(emp['descripcion']) else '',
+            'municipio': municipios[municipios.id_municipio == emp['id_municipio_origen']]['municipio'].values[0] if emp['id_municipio_origen'] in municipios.id_municipio.values else '',
+            'seguidores': seg,
+            'tematicas': tema_names
+        })
+
+    return JsonResponse({
+        'status': 'ok',
+        'graph_data': graph_data,
+        'emprendimientos': emprendimientos_data,
+        'tematicas': [t['nombre'] for t in tematicas.to_dict('records')],
         'n_communities': n_communities
     })
 
@@ -509,19 +640,19 @@ def recommend_emprendimientos(request):
         return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
     id_emprendimiento = int(request.POST.get('id_emprendimiento'))
+    model_name = request.POST.get('model')
     
-    # Verificar que los datos estén inicializados
-    if not all(v is not None for v in SHARED_DATA.values()):
-        return JsonResponse({'status': 'error', 'message': 'Datos no inicializados. Visita la página de predicciones primero.'}, status=500)
+    if not model_name or model_name not in SHARED_DATA:
+        return JsonResponse({'status': 'error', 'message': f'Modelo {model_name} no inicializado. Visita la página de predicciones primero.'}, status=400)
 
     # Usar datos preprocesados
-    G = SHARED_DATA['G']
-    embeddings = SHARED_DATA['embeddings']
-    node_ids = SHARED_DATA['node_ids']
-    emprendimientos = SHARED_DATA['emprendimientos']
-    emprendimiento_tematica = SHARED_DATA['emprendimiento_tematica']
-    tematicas = SHARED_DATA['tematicas']
-    municipios = SHARED_DATA['municipios']
+    G = SHARED_DATA[model_name]['G']
+    embeddings = SHARED_DATA[model_name]['embeddings']
+    node_ids = SHARED_DATA[model_name]['node_ids']
+    emprendimientos = SHARED_DATA[model_name]['emprendimientos']
+    emprendimiento_tematica = SHARED_DATA[model_name]['emprendimiento_tematica']
+    tematicas = SHARED_DATA[model_name]['tematicas']
+    municipios = SHARED_DATA[model_name]['municipios']
 
     try:
         target_idx = np.where(np.array(node_ids) == id_emprendimiento)[0][0]
@@ -529,11 +660,11 @@ def recommend_emprendimientos(request):
         return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
 
     from sklearn.preprocessing import normalize
-    embeddings = normalize(embeddings)  # Normalizar embeddings
+    embeddings = normalize(embeddings)
     target_embedding = embeddings[target_idx].reshape(1, -1)
     similarities = cosine_similarity(target_embedding, embeddings)[0]
     sorted_indices = np.argsort(similarities)[::-1]
-    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento and similarities[i] > 0.1][:20]  # Aumentar a 20 y añadir umbral
+    sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento and similarities[i] > 0.1][:20]
 
     recommendations = []
     for idx in sorted_indices:
@@ -553,29 +684,29 @@ def recommend_emprendimientos(request):
 
     return JsonResponse({'status': 'success', 'recommendations': recommendations})
 
-
 def generate_pdf_report(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
     
     id_emprendimiento = int(request.POST.get('id_emprendimiento'))
+    model_name = request.POST.get('model')
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # Verificar que SHARED_DATA esté inicializado
-    required_keys = ['G', 'embeddings', 'node_ids', 'emprendimientos', 'emprendimiento_tematica', 'tematicas', 'municipios']
-    if not all(key in SHARED_DATA and SHARED_DATA[key] is not None for key in required_keys):
+    if not model_name or model_name not in SHARED_DATA:
         return JsonResponse({
             'status': 'error',
-            'message': 'Datos no inicializados. Por favor, visita la página de predicciones primero.'
-        }, status=500)
+            'message': f'Modelo {model_name} no inicializado. Visita la página de predicciones primero.'
+        }, status=400)
 
     # Obtener datos del emprendimiento
-    emprendimientos = SHARED_DATA['emprendimientos']
-    emprendimiento_tematica = SHARED_DATA['emprendimiento_tematica']
-    tematicas = SHARED_DATA['tematicas']
-    municipios = SHARED_DATA['municipios']
-    seguidores = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/seguidores.csv'))
-    publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
+    emprendimientos = SHARED_DATA[model_name]['emprendimientos']
+    emprendimiento_tematica = SHARED_DATA[model_name]['emprendimiento_tematica']
+    tematicas = SHARED_DATA[model_name]['tematicas']
+    municipios = SHARED_DATA[model_name]['municipios']
+    node_ids = SHARED_DATA[model_name]['node_ids']
+    embeddings = SHARED_DATA[model_name]['embeddings']
+    seguidores = SHARED_DATA[model_name]['seguidores']
+    publicaciones = SHARED_DATA[model_name]['publicaciones']
     
     try:
         emp = emprendimientos[emprendimientos.id_emprendimiento == id_emprendimiento].iloc[0]
@@ -593,18 +724,18 @@ def generate_pdf_report(request):
     
     # Obtener recomendaciones
     recommendations = []
-    if id_emprendimiento in SHARED_DATA['G'].nodes():
+    if id_emprendimiento in node_ids:
         try:
-            target_idx = np.where(np.array(SHARED_DATA['node_ids']) == id_emprendimiento)[0][0]
+            target_idx = np.where(np.array(node_ids) == id_emprendimiento)[0][0]
             from sklearn.preprocessing import normalize
-            embeddings = normalize(SHARED_DATA['embeddings'])  # Normalizar embeddings
+            embeddings = normalize(embeddings)
             target_embedding = embeddings[target_idx].reshape(1, -1)
             similarities = cosine_similarity(target_embedding, embeddings)[0]
             sorted_indices = np.argsort(similarities)[::-1]
-            sorted_indices = [i for i in sorted_indices if SHARED_DATA['node_ids'][i] != id_emprendimiento and similarities[i] > 0.1][:20]
+            sorted_indices = [i for i in sorted_indices if node_ids[i] != id_emprendimiento and similarities[i] > 0.1][:20]
             
             for idx in sorted_indices:
-                rec_id = SHARED_DATA['node_ids'][idx]
+                rec_id = node_ids[idx]
                 rec_emp = emprendimientos[emprendimientos.id_emprendimiento == rec_id].iloc[0]
                 rec_temas = emprendimiento_tematica[emprendimiento_tematica.id_emprendimiento == rec_id]['id_tematica'].tolist()
                 rec_tema_names = [tematicas[tematicas.id_tematica == t]['nombre'].values[0] for t in rec_temas]
@@ -614,7 +745,7 @@ def generate_pdf_report(request):
                     'tematicas': rec_tema_names
                 })
         except IndexError:
-            recommendations = []  # En caso de error, devolver lista vacía de recomendaciones
+            recommendations = []
 
     # Crear contexto para el template
     context = {
@@ -644,8 +775,6 @@ def generate_pdf_report(request):
         return HttpResponse('Error al generar PDF', status=500)
     
     return response
-
-
 
 """
 
