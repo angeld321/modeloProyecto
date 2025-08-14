@@ -4,8 +4,9 @@
 {% block title %}Entorno Simulado - Evaluación{% endblock %}
 
 {% block content %}
-<!-- Carga explícita de Bootstrap CSS para asegurar estilos -->
+<!-- Carga explícita de Bootstrap CSS y JS para asegurar estilos y modales -->
 {% bootstrap_css %}
+{% bootstrap_javascript %}
 
 <div class="container-fluid py-5 bg-light min-vh-100">
   <!-- Header Section -->
@@ -87,13 +88,19 @@
         <div class="card-body">
           <div class="row g-4">
             <div class="col-12 col-md-6">
-              <div class="border rounded p-3 bg-white shadow-sm">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#rocModal">
                 <canvas id="chart-roc" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
               </div>
             </div>
             <div class="col-12 col-md-6">
-              <div class="border rounded p-3 bg-white shadow-sm">
+              <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#prModal">
                 <canvas id="chart-pr" style="max-height: 400px;"></canvas>
+                <div class="position-absolute top-0 end-0 p-2">
+                  <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
+                </div>
               </div>
             </div>
           </div>
@@ -177,6 +184,36 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal para Curva ROC -->
+  <div class="modal fade" id="rocModal" tabindex="-1" aria-labelledby="rocModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="rocModalLabel">Curva ROC</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <canvas id="chart-roc-modal" style="max-height: 600px; width: 100%;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para Curva Precision-Recall -->
+  <div class="modal fade" id="prModal" tabindex="-1" aria-labelledby="prModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="prModalLabel">Curva Precision-Recall</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <canvas id="chart-pr-modal" style="max-height: 600px; width: 100%;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Librerías -->
@@ -204,14 +241,16 @@
   const thresholdLabel = $("#threshold-label");
 
   // Charts
-  let rocChart, prChart, histChart, radarChart;
+  let rocChart, prChart, histChart, radarChart, rocModalChart, prModalChart;
 
   // Estado global actual
   let CURRENT = {
     model: defaultModel,
     metrics: null,
     hist: null,
-    errors: null
+    errors: null,
+    roc: null, // Almacenar datos ROC
+    pr: null   // Almacenar datos PR
   };
 
   function showLoader(flag) {
@@ -231,11 +270,12 @@
     });
   }
 
-  function drawROC(rocData) {
-    const ctx = $("#chart-roc");
-    if (rocChart) rocChart.destroy();
+  function drawROC(rocData, canvasId = "chart-roc") {
+    const ctx = $(`#${canvasId}`);
+    if (canvasId === "chart-roc" && rocChart) rocChart.destroy();
+    if (canvasId === "chart-roc-modal" && rocModalChart) rocModalChart.destroy();
     console.log("ROC Data:", rocData); // Debug: Verificar datos ROC
-    rocChart = new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: "line",
       data: {
         labels: rocData.fpr,
@@ -259,11 +299,16 @@
         }
       }
     });
+    if (canvasId === "chart-roc") rocChart = chart;
+    if (canvasId === "chart-roc-modal") rocModalChart = chart;
+    ctx.style.width = '100%';
+    ctx.style.height = canvasId === "chart-roc-modal" ? '600px' : '400px';
   }
 
-  function drawPR(prData) {
-    const ctx = $("#chart-pr");
-    if (prChart) prChart.destroy();
+  function drawPR(prData, canvasId = "chart-pr") {
+    const ctx = $(`#${canvasId}`);
+    if (canvasId === "chart-pr" && prChart) prChart.destroy();
+    if (canvasId === "chart-pr-modal" && prModalChart) prModalChart.destroy();
     console.log("PR Data:", prData); // Debug: Verificar datos PR
     if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
       console.warn("PR curve data is empty or invalid");
@@ -273,7 +318,7 @@
       x: recall,
       y: prData.precision[i]
     }));
-    prChart = new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: "line",
       data: {
         datasets: [{
@@ -305,8 +350,10 @@
         devicePixelRatio: 1
       }
     });
+    if (canvasId === "chart-pr") prChart = chart;
+    if (canvasId === "chart-pr-modal") prModalChart = chart;
     ctx.style.width = '100%';
-    ctx.style.height = '400px';
+    ctx.style.height = canvasId === "chart-pr-modal" ? '600px' : '400px';
   }
 
   function drawHist(hist) {
@@ -446,6 +493,8 @@
     CURRENT.metrics = data.metrics;
     CURRENT.hist = data.hist;
     CURRENT.errors = { fp: data.errors.fp, fn: data.errors.fn };
+    CURRENT.roc = data.roc; // Almacenar datos ROC
+    CURRENT.pr = data.pr;   // Almacenar datos PR
 
     thresholdLabel.textContent = Number(thresholdSlider.value).toFixed(2);
 
@@ -537,6 +586,24 @@
       alert(e.message || e);
     }
   }
+
+  // Redibujar gráficas en modales cuando se abren
+  $("#rocModal").addEventListener("shown.bs.modal", () => {
+    if (CURRENT.roc) drawROC(CURRENT.roc, "chart-roc-modal");
+  });
+
+  $("#prModal").addEventListener("shown.bs.modal", () => {
+    if (CURRENT.pr) drawPR(CURRENT.pr, "chart-pr-modal");
+  });
+
+  // Destruir gráficas de modales cuando se cierran para liberar memoria
+  $("#rocModal").addEventListener("hidden.bs.modal", () => {
+    if (rocModalChart) rocModalChart.destroy();
+  });
+
+  $("#prModal").addEventListener("hidden.bs.modal", () => {
+    if (prModalChart) prModalChart.destroy();
+  });
 
   $("#btn-export-metrics").addEventListener("click", () => {
     const m = CURRENT.metrics || {};
