@@ -1,787 +1,652 @@
 {% extends 'simulacion/topBar.html' %}
+{% load static %}
+{% load django_bootstrap5 %}
 {% block title %}Entorno Simulado - Predicciones{% endblock %}
 {% block content %}
+{% bootstrap_css %}
+{% bootstrap_javascript %}
+
 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
-<!-- Área Principal -->
-<div class="main-container">
-    <div class="graph-container">
-        <p id="insight-text">⚠️ Selecciona un emprendimiento para ver insights.</p>
-        <div id="graph"></div>
+<!-- Main Container -->
+<div class="container-fluid py-4 bg-light min-vh-100">
+  <div class="row g-4">
+    <!-- Graph Container (Left, 70%) -->
+    <div class="col-md-8">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body p-0 position-relative">
+          <div id="insight-text" class="position-absolute top-0 start-0 m-3 bg-white bg-opacity-75 p-2 rounded shadow-sm">
+            ⚠️ Selecciona un emprendimiento para ver insights.
+          </div>
+          <div id="graph-error" class="alert alert-warning m-3" style="display: none;">
+            No se pudieron cargar los datos del grafo. Verifica la consola para más detalles.
+          </div>
+          <div id="graph" style="width: 100%; height: 100%; min-height: 70vh; background: #f8f9fa;"></div>
+        </div>
+      </div>
     </div>
-    <div class="sidebar">
-        <div class="top-controls">
-            <div class="search-container">
-                <input type="text" id="search-input" placeholder="Buscar por nombre, ID o temática...">
-                <div id="search-results" class="search-results"></div>
+
+    <!-- Sidebar (Right, 30%) -->
+    <div class="col-md-4">
+      <!-- Search and Config Card -->
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Controles</h5>
+        </div>
+        <div class="card-body">
+          <!-- Search -->
+          <div class="mb-3">
+            <div class="input-group">
+              <span class="input-group-text bg-primary text-white border-0">
+                <i class="bi bi-search"></i>
+              </span>
+              <input type="text" id="search-input" class="form-control" placeholder="Buscar por nombre, ID o temática...">
             </div>
-            <div class="config-container">
-                <button onclick="toggleConfig()">⚙️ Configuración</button>
-                <div id="config-panel" class="config-panel" style="display: none;">
-                    <div class="algo-tabs">
-                        <button class="tab active" onclick="selectAlgo('recommendations')">🔍 Recomendaciones</button>
-                        <button class="tab" onclick="selectAlgo('community')">🧩 Análisis de Comunidades</button>
-                        <button class="tab" onclick="selectAlgo('clustering')">📊 Clusterización</button>
-                    </div>
-                    <div class="advanced-settings">
-                        <h3>Ajustes Avanzados</h3>
-                        <label>Rango de Seguidores:</label>
-                        <input type="range" id="followers-range" min="0" max="{{ max_followers }}" value="0">
-                        <span id="followers-value">0</span>
-                        <label>Filtro Geográfico:</label>
-                        <select id="municipio-filter" multiple>
-                            {% for municipio in municipios %}
-                            <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
+            <div id="search-results" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+          </div>
+          <!-- Config -->
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#config-panel" aria-expanded="false" aria-controls="config-panel">
+              <i class="bi bi-gear-fill me-2"></i>Configuración
+            </button>
+            <!-- Algorithm Selection -->
+            <div class="dropdown">
+              <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Algoritmo
+              </button>
+              <ul class="dropdown-menu">
+                <li><button class="dropdown-item active" onclick="selectAlgo('recommendations')">🔍 Recomendaciones</button></li>
+                <li><button class="dropdown-item" onclick="selectAlgo('community')">🧩 Análisis de Comunidades</button></li>
+                <li><button class="dropdown-item" onclick="selectAlgo('clustering')">📊 Clusterización</button></li>
+              </ul>
             </div>
-        </div>
-        <div class="sidebar-tabs">
-            <button class="tab active" onclick="showTab('summary')">Resumen</button>
-            <button class="tab" onclick="showTab('recommendations')">Recomendaciones</button>
-            <button class="tab" onclick="showTab('community')">Comunidad</button>
-        </div>
-        <div id="summary" class="tab-content active">
-            <h3>Resumen del Emprendimiento</h3>
-            <div id="summary-content">
-                <p>Selecciona un emprendimiento en el grafo.</p>
+          </div>
+          <!-- Config Panel -->
+          <div class="collapse mt-3" id="config-panel">
+            <div class="card card-body border-0 shadow-sm">
+              <h6 class="fw-bold">Ajustes Avanzados</h6>
+              <div class="mb-3">
+                <label for="followers-range" class="form-label">Rango de Seguidores:</label>
+                <input type="range" id="followers-range" class="form-range" min="0" max="{{ max_followers|default:1000 }}" value="0">
+                <span id="followers-value" class="text-muted">0</span>
+              </div>
+              <div class="mb-3">
+                <label for="municipio-filter" class="form-label">Filtro Geográfico:</label>
+                <select id="municipio-filter" class="form-select" multiple>
+                  {% for municipio in municipios %}
+                    <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="clustering-type" class="form-label">Tipo de Clustering:</label>
+                <select id="clustering-type" class="form-select">
+                  <option value="kmeans">K-Means</option>
+                  <option value="agglomerative">Agglomerative</option>
+                  <option value="dbscan">DBSCAN</option>
+                </select>
+              </div>
             </div>
-            <canvas id="radar-chart" style="max-height: 200px;"></canvas>
-            <button onclick="generateReport()" class="report-btn">📤 Generar Reporte PDF</button>
+          </div>
         </div>
-        <div id="recommendations" class="tab-content">
-            <h3>Recomendaciones Inteligentes</h3>
-            <div id="recommendations-content"></div>
+      </div>
+
+      <!-- Tabs Card -->
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">Detalles</h5>
         </div>
-        <div id="community" class="tab-content">
-            <h3>Análisis de Comunidad</h3>
-            <div id="community-content"></div>
-            <canvas id="heatmap-chart" style="max-height: 200px;"></canvas>
+        <div class="card-body p-0">
+          <ul class="nav nav-tabs">
+            <li class="nav-item">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#summary">Resumen</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recommendations">Recomendaciones</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#community">Comunidad</button>
+            </li>
+          </ul>
+          <div class="tab-content p-3">
+            <div class="tab-pane fade show active" id="summary">
+              <h5 class="fw-bold mb-3">Resumen del Emprendimiento</h5>
+              <div id="summary-content">
+                <p class="text-muted">Selecciona un emprendimiento en el grafo.</p>
+              </div>
+              <canvas id="radar-chart" style="max-height: 200px;"></canvas>
+            </div>
+            <div class="tab-pane fade" id="recommendations">
+              <h5 class="fw-bold mb-3">Recomendaciones Inteligentes</h5>
+              <div id="recommendations-content"></div>
+            </div>
+            <div class="tab-pane fade" id="community">
+              <h5 class="fw-bold mb-3">Análisis de Comunidad</h5>
+              <div id="community-content"></div>
+              <canvas id="heatmap-chart" style="max-height: 200px;"></canvas>
+            </div>
+          </div>
         </div>
-        <div class="quick-actions">            
-            <button onclick="resetGraph()">🔄 Reiniciar Grafo</button>
+      </div>
+
+      <!-- Quick Actions Card -->
+      <div class="card shadow-sm border-0">
+        <div class="card-body d-flex justify-content-between">
+          <button onclick="resetGraph()" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-repeat me-2"></i>Reiniciar Grafo
+          </button>
+          <button onclick="generateReport()" class="btn btn-primary btn-sm report-btn">
+            <i class="bi bi-file-earmark-pdf me-2"></i>Generar Reporte PDF
+          </button>
         </div>
+      </div>
     </div>
+  </div>
 </div>
 
+<!-- Librerías -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
 <style>
-.main-container {
-    display: flex;
-    height: calc(100vh - 50px);
-    margin-top: 50px;
-}
-.graph-container {
-    width: 70%;
-    position: relative;
-    border-right: 1px solid #ddd;
-    border: 1px solid #000;
-    height: calc(100vh - 50px);
-    max-height: calc(100vh - 50px); /* Previene alargamiento */
-    overflow: hidden;
-}
-#insight-text {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: rgba(255,255,255,0.8);
-    padding: 5px 10px;
-    border-radius: 4px;
-    z-index: 10;
-}
+/* Minimal custom CSS for specific tweaks */
 #graph {
-    width: 100%;
-    height: 100%;
+  width: 100%;
+  height: 100%;
 }
 #graph svg {
-    width: 100%;
-    height: 100%;
-    display: block; /* Asegura que el SVG ocupe el espacio correcto */
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-.sidebar {
-    width: 30%;
-    padding: 10px;
-    overflow-y: auto;
+.tooltip {
+  position: absolute;
+  background: white;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  z-index: 1000;
 }
-.top-controls {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-}
-.search-container {
-    position: relative;
-    width: 60%;
-    margin-right: 20px;
-}
-#search-input {
-    width: 100%;
-    padding: 8px;
-    font-size: 14px;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-}
-.search-results {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    background: white;
-    border: 1px solid #ddd;
-    max-height: 200px;
-    overflow-y: auto;
-    display: none;
-    z-index: 1001;
-}
-.search-results div {
-    padding: 8px;
-    cursor: pointer;
-}
-.search-results div:hover {
-    background: #f0f0f0;
-}
-.config-container {
-    position: relative;
-}
-.config-panel {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    background: white;
-    border: 1px solid #ddd;
-    padding: 10px;
-    width: 250px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    z-index: 1001;
-}
-.algo-tabs button {
-    display: inline-block;
-    padding: 8px;
-    margin: 2px;
-    border: none;
-    background: #ddd;
-    cursor: pointer;
-}
-.algo-tabs button.active {
-    background: #4CAF50;
-    color: white;
-}
-.advanced-settings {
-    margin-top: 10px;
-}
-#municipio-filter {
-    width: 100%;
-    padding: 5px;
-}
-.sidebar-tabs button {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    border: none;
-    background: #ddd;
-    cursor: pointer;
-    text-align: left;
-}
-.sidebar-tabs button.active {
-    background: #2776F5;
-    color: white;
-}
-.tab-content {
-    display: none;
-}
-.tab-content.active {
-    display: block;
-}
-.rec-card {
-    border: 1px solid #ddd;
-    padding: 10px;
-    margin: 5px 0;
-    border-radius: 4px;
-}
-.rec-card button {
-    background: #2776f5;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-.rec-card button:hover {
-    background: #488DFA;
-}
-.quick-actions {
-    margin-top: 10px;
-    text-align: right;
-}
-.quick-actions button, .report-btn {
-    margin: 5px;
-    padding: 8px;
-    background: #488DFA;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-.quick-actions button:hover, .report-btn:hover {
-    background: #488DFA;
+.list-group-item:hover {
+  background-color: #f8f9fa;
+  cursor: pointer;
 }
 @media (max-width: 768px) {
-    .main-container {
-        flex-direction: column;
-    }
-    .graph-container, .sidebar {
-        width: 100%;
-    }
-    .graph-container {
-        height: 50vh;
-        max-height: 50vh; /* Altura fija para móviles */
-    }
-    .sidebar {
-        margin-top: 20px;
-    }
-    .top-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .search-container {
-        width: 100%;
-        margin-right: 0;
-        margin-bottom: 10px;
-    }
+  #graph {
+    min-height: 50vh;
+  }
+  .card-body {
+    padding: 1rem;
+  }
 }
 </style>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 // Función para obtener datos de localStorage o del servidor
 function loadGraphData() {
-    const storedData = localStorage.getItem('prediccionesGraphData');
-    const storedTimestamp = localStorage.getItem('prediccionesTimestamp');
-    const currentTime = new Date().getTime();
-    const cacheDuration = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
+  const storedData = localStorage.getItem('prediccionesGraphData');
+  const storedTimestamp = localStorage.getItem('prediccionesTimestamp');
+  const currentTime = new Date().getTime();
+  const cacheDuration = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
 
-    // Verificar si hay datos en localStorage y si no han expirado
-    if (storedData && storedTimestamp && (currentTime - storedTimestamp < cacheDuration)) {
-        const data = JSON.parse(storedData);
-        return {
-            graphData: data.graphData,
-            emprendimientosData: data.emprendimientosData,
-            tematicasData: data.tematicasData,
-            nCommunities: data.nCommunities
-        };
+  let graphData, emprendimientosData, tematicasData, nCommunities;
+  if (storedData && storedTimestamp && (currentTime - storedTimestamp < cacheDuration)) {
+    const data = JSON.parse(storedData);
+    graphData = data.graphData;
+    emprendimientosData = data.emprendimientosData;
+    tematicasData = data.tematicasData;
+    nCommunities = data.nCommunities;
+  } else {
+    try {
+      graphData = JSON.parse('{{ graph_data|escapejs }}');
+      emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
+      tematicasData = JSON.parse('{{ tematicas|escapejs }}');
+      nCommunities = Number('{{ n_communities|escapejs }}');
+    } catch (e) {
+      console.error('Error al parsear datos del servidor:', e);
+      document.getElementById('graph-error').style.display = 'block';
+      return { graphData: { nodes: [], links: [] }, emprendimientosData: [], tematicasData: [], nCommunities: 0 };
     }
-
-    // Si no hay datos o están expirados, usar datos del servidor y almacenarlos
-    const graphData = JSON.parse('{{ graph_data|escapejs }}');
-    const emprendimientosData = JSON.parse('{{ emprendimientos|escapejs }}');
-    const tematicasData = JSON.parse('{{ tematicas|escapejs }}');
-    const nCommunities = Number('{{ n_communities|escapejs }}');
-
-    // Guardar en localStorage
-    const dataToStore = {
-        graphData,
-        emprendimientosData,
-        tematicasData,
-        nCommunities
-    };
+    const dataToStore = { graphData, emprendimientosData, tematicasData, nCommunities };
     localStorage.setItem('prediccionesGraphData', JSON.stringify(dataToStore));
     localStorage.setItem('prediccionesTimestamp', currentTime);
+  }
 
-    return { graphData, emprendimientosData, tematicasData, nCommunities };
+  // Validar datos
+  if (!graphData || !graphData.nodes || !graphData.links || graphData.nodes.length === 0) {
+    console.error('Datos del grafo vacíos o inválidos:', graphData);
+    document.getElementById('graph-error').style.display = 'block';
+    return { graphData: { nodes: [], links: [] }, emprendimientosData: [], tematicasData: [], nCommunities: 0 };
+  }
+
+  console.log('Datos cargados:', { graphData, emprendimientosData, tematicasData, nCommunities });
+  return { graphData, emprendimientosData, tematicasData, nCommunities };
 }
 
 // Cargar datos
 const { graphData, emprendimientosData, tematicasData, nCommunities } = loadGraphData();
 let selectedNode = null;
-let highlightedConnection = null; // Variable para rastrear la conexión resaltada
+let highlightedConnection = null;
 
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 searchInput.addEventListener('input', () => {
-    const query = searchInput.value.toLowerCase();
-    searchResults.innerHTML = '';
-    if (query.length < 2) {
-        searchResults.style.display = 'none';
-        return;
-    }
-    const results = emprendimientosData.filter(emp => 
-        emp.nombre_emprendimiento.toLowerCase().includes(query) ||
-        emp.id_emprendimiento.toString().includes(query) ||
-        emp.tematicas.some(t => t.toLowerCase().includes(query))
-    );
-    results.forEach(emp => {
-        const div = document.createElement('div');
-        div.innerHTML = `
-            <strong>${emp.nombre_emprendimiento}</strong> (ID: ${emp.id_emprendimiento})<br>
-            Seguidores: ${emp.seguidores || 0}, Municipio: ${emp.municipio}
-        `;
-        div.onclick = () => selectNode(emp.id_emprendimiento);
-        searchResults.appendChild(div);
-    });
-    searchResults.style.display = results.length ? 'block' : 'none';
+  const query = searchInput.value.toLowerCase();
+  searchResults.innerHTML = '';
+  searchResults.style.display = 'none';
+  if (query.length < 2) return;
+
+  const results = emprendimientosData.filter(emp =>
+    emp.nombre_emprendimiento?.toLowerCase().includes(query) ||
+    emp.id_emprendimiento?.toString().includes(query) ||
+    emp.tematicas?.some(t => t.toLowerCase().includes(query))
+  );
+  results.forEach(emp => {
+    const div = document.createElement('div');
+    div.className = 'list-group-item';
+    div.innerHTML = `
+      <strong>${emp.nombre_emprendimiento || 'Sin nombre'}</strong> (ID: ${emp.id_emprendimiento || 'N/A'})<br>
+      <small class="text-muted">Seguidores: ${emp.seguidores || 0}, Municipio: ${emp.municipio || 'N/A'}</small>
+    `;
+    div.onclick = () => selectNode(emp.id_emprendimiento);
+    searchResults.appendChild(div);
+  });
+  searchResults.style.display = results.length ? 'block' : 'none';
 });
 
-function toggleConfig() {
-    const panel = document.getElementById('config-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-}
-
 function selectAlgo(algo) {
-    document.querySelectorAll('.algo-tabs button').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+  document.querySelectorAll('.dropdown-item').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  colorMode = algo === 'recommendations' ? 'community' : algo;
+  updateGraph();
 }
 
+let colorMode = 'community';
+let clusteringType = 'kmeans';
 document.getElementById('followers-range').addEventListener('input', (e) => {
-    document.getElementById('followers-value').textContent = e.target.value;
-    updateGraph();
+  document.getElementById('followers-value').textContent = e.target.value;
+  updateGraph();
+});
+document.getElementById('clustering-type').addEventListener('change', (e) => {
+  clusteringType = e.target.value;
+  if (colorMode === 'clustering') updateGraph();
 });
 
 const svg = d3.select('#graph').append('svg').attr('width', '100%').attr('height', '100%');
-const width = document.querySelector('.graph-container').offsetWidth;
-const height = document.querySelector('.graph-container').offsetHeight;
+const width = document.querySelector('#graph').offsetWidth;
+const height = document.querySelector('#graph').offsetHeight;
 const simulation = d3.forceSimulation()
-    .force('link', d3.forceLink().id(d => d.id).distance(150))
-    .force('charge', d3.forceManyBody().strength(-300))
-    .force('center', d3.forceCenter(width / 2, height / 2));
+  .force('link', d3.forceLink().id(d => d.id).distance(150))
+  .force('charge', d3.forceManyBody().strength(-300))
+  .force('center', d3.forceCenter(width / 2, height / 2))
+  .force('collide', d3.forceCollide().radius(d => Math.sqrt(d.seguidores || 10) + 10));
 
 const zoom = d3.zoom()
-    .scaleExtent([0.5, 3])
-    .on('zoom', (event) => {
-        svg.selectAll('g').attr('transform', event.transform);
-    });
+  .scaleExtent([0.5, 3])
+  .on('zoom', (event) => {
+    svg.selectAll('g').attr('transform', event.transform);
+  });
 svg.call(zoom);
 
-
-/*
-
-    Clusterización K-MEANS
-
-*/
-
-let colorMode = 'community'; // Modo inicial de coloreado (por comunidad Louvain)
-let clusteringType = 'kmeans'; // Tipo de clustering por default
-
-function selectAlgo(algo) {
-    document.querySelectorAll('.algo-tabs button').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    if (algo === 'community') {
-        colorMode = 'community';
-    } else if (algo === 'clustering') {
-        colorMode = 'clustering';
-    } // 'recommendations' no cambia colorMode
-    
-    updateGraph(); // Actualizar el grafo con el nuevo modo de coloreado
-}
-
-// Agregar select para tipo de clustering dentro del panel de config (en HTML, agrega esto en .advanced-settings)
-const clusteringSelect = document.createElement('select');
-clusteringSelect.id = 'clustering-type';
-clusteringSelect.innerHTML = `
-    <option value="kmeans">K-Means</option>
-    <option value="agglomerative">Agglomerative</option>
-    <option value="dbscan">DBSCAN</option>
-`;
-clusteringSelect.addEventListener('change', (e) => {
-    clusteringType = e.target.value;
-    if (colorMode === 'clustering') {
-        updateGraph();
-    }
-});
-document.querySelector('.advanced-settings').appendChild(clusteringSelect);
-
-
-
 function updateGraph() {
-    // Limpiar el SVG
-    svg.selectAll('*').remove();
-    const g = svg.append('g');
+  svg.selectAll('*').remove();
+  const g = svg.append('g');
 
-    // Aplicar filtros
-    const minFollowers = +document.getElementById('followers-range').value;
-    const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
-    
-    const filteredNodes = graphData.nodes.filter(node => 
-        node.seguidores >= minFollowers &&
-        (selectedMunicipios.length === 0 || selectedMunicipios.includes(node.id_municipio_origen))
-    );
-    const nodeIds = new Set(filteredNodes.map(n => n.id));
-    const filteredLinks = graphData.links.filter(link => 
-        nodeIds.has(link.source.id || link.source) && nodeIds.has(link.target.id || link.target)
-    );
+  const minFollowers = +document.getElementById('followers-range').value;
+  const selectedMunicipios = Array.from(document.getElementById('municipio-filter').selectedOptions).map(opt => +opt.value);
+  
+  const filteredNodes = graphData.nodes.filter(node => {
+    if (!node.id || !node.seguidores || !node.id_municipio_origen) {
+      console.warn('Nodo inválido:', node);
+      return false;
+    }
+    return node.seguidores >= minFollowers &&
+           (selectedMunicipios.length === 0 || selectedMunicipios.includes(node.id_municipio_origen));
+  });
+  const nodeIds = new Set(filteredNodes.map(n => n.id));
+  const filteredLinks = graphData.links.filter(link => {
+    const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+    const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+    return nodeIds.has(sourceId) && nodeIds.has(targetId);
+  });
 
-    // Dibujar enlaces
-    const links = g.append('g').selectAll('line')
-        .data(filteredLinks)
-        .enter().append('line')
-        .attr('stroke', d => {
-            const sourceId = d.source.id || d.source;
-            const targetId = d.target.id || d.target;
-            if (highlightedConnection && 
-                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
-                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
-                return '#FF0000'; // Rojo brillante para enlace resaltado
-            }
-            return '#999';
-        })
-        .attr('stroke-opacity', d => {
-            const sourceId = d.source.id || d.source;
-            const targetId = d.target.id || d.target;
-            if (highlightedConnection && 
-                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
-                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
-                return 1; // Opacidad completa para enlace resaltado
-            }
-            return 0.6;
-        })
-        .attr('stroke-width', d => {
-            const sourceId = d.source.id || d.source;
-            const targetId = d.target.id || d.target;
-            if (highlightedConnection && 
-                ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
-                 (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
-                return 5; // Grosor mayor para enlace resaltado
-            }
-            return Math.sqrt(d.weight || 1);
-        });
+  console.log('Nodos filtrados:', filteredNodes.length, 'Enlaces filtrados:', filteredLinks.length);
 
-    // Dibujar nodos con coloreado basado en el modo actual
-    const nodes = g.append('g').selectAll('circle')
-        .data(filteredNodes)
-        .enter().append('circle')
-        .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
-        .attr('fill', d => {
-            let clusterValue;
-            if (colorMode === 'clustering') {
-                if (clusteringType === 'kmeans') {
-                    clusterValue = d.cluster_kmeans;
-                } else if (clusteringType === 'agglomerative') {
-                    clusterValue = d.cluster_agglomerative;
-                } else if (clusteringType === 'dbscan') {
-                    clusterValue = d.cluster_dbscan;
-                }
-            } else {
-                clusterValue = d.comunidad_louvain;
-            }
-            if (d.id === selectedNode?.id_emprendimiento) {
-                return '#FFD700'; // Dorado para nodo seleccionado
-            } else if (highlightedConnection && d.id === highlightedConnection.targetId) {
-                return '#FF4500'; // Naranja rojizo para nodo recomendado
-            }
-            return d3.schemeCategory10[clusterValue % 10];
-        })
-        .attr('stroke', d => {
-            if (d.id === selectedNode?.id_emprendimiento) {
-                return '#000000'; // Borde negro para nodo seleccionado
-            }
-            return null;
-        })
-        .attr('stroke-width', d => {
-            if (d.id === selectedNode?.id_emprendimiento) {
-                return 2; // Grosor del borde negro
-            }
-            return 0;
-        })
-        .attr('opacity', d => {
-            if (highlightedConnection && 
-                (d.id === highlightedConnection.sourceId || d.id === highlightedConnection.targetId)) {
-                return 1; // Opacidad completa para nodos resaltados
-            }
-            return highlightedConnection ? 0.3 : 1; // Reducir opacidad de otros nodos si hay conexión resaltada
-        })
-        .call(d3.drag()
-            .on('start', dragstarted)
-            .on('drag', dragged)
-            .on('end', dragended))
-        .on('mouseover', function(event, d) {
-            if (!highlightedConnection || 
-                (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
-                d3.select(this).attr('opacity', 1);
-            }
-            showTooltip(d);
-        })
-        .on('mouseout', function(event, d) {
-            if (highlightedConnection && 
-                (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
-                d3.select(this).attr('opacity', 0.3);
-            }
-            hideTooltip();
-        })
-        .on('click', (event, d) => selectNode(d.id));
+  if (filteredNodes.length === 0) {
+    document.getElementById('graph-error').textContent = 'No hay nodos que cumplan con los filtros seleccionados.';
+    document.getElementById('graph-error').style.display = 'block';
+    return;
+  } else {
+    document.getElementById('graph-error').style.display = 'none';
+  }
 
-    // Configurar simulación
-    simulation.nodes(filteredNodes).on('tick', () => {
-        links
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-        nodes
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y);
+  const links = g.append('g').selectAll('line')
+    .data(filteredLinks)
+    .enter().append('line')
+    .attr('stroke', d => {
+      const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+      const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+      if (highlightedConnection &&
+          ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+           (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+        return '#FF0000';
+      }
+      return '#999';
+    })
+    .attr('stroke-opacity', d => {
+      const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+      const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+      if (highlightedConnection &&
+          ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+           (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+        return 1;
+      }
+      return 0.6;
+    })
+    .attr('stroke-width', d => {
+      const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+      const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+      if (highlightedConnection &&
+          ((sourceId === highlightedConnection.sourceId && targetId === highlightedConnection.targetId) ||
+           (sourceId === highlightedConnection.targetId && targetId === highlightedConnection.sourceId))) {
+        return 5;
+      }
+      return Math.sqrt(d.weight || 1);
     });
 
-    simulation.force('link').links(filteredLinks);
-    simulation.alpha(1).restart(); // Reiniciar simulación para estabilizar el grafo
+  const nodes = g.append('g').selectAll('circle')
+    .data(filteredNodes)
+    .enter().append('circle')
+    .attr('r', d => Math.sqrt(d.seguidores || 10) + 5)
+    .attr('fill', d => {
+      let clusterValue;
+      if (colorMode === 'clustering') {
+        if (clusteringType === 'kmeans') {
+          clusterValue = d.cluster_kmeans;
+        } else if (clusteringType === 'agglomerative') {
+          clusterValue = d.cluster_agglomerative;
+        } else if (clusteringType === 'dbscan') {
+          clusterValue = d.cluster_dbscan;
+        }
+      } else {
+        clusterValue = d.comunidad_louvain;
+      }
+      if (d.id === selectedNode?.id_emprendimiento) {
+        return '#FFD700';
+      } else if (highlightedConnection && d.id === highlightedConnection.targetId) {
+        return '#FF4500';
+      }
+      return d3.schemeCategory10[(clusterValue || 0) % 10];
+    })
+    .attr('stroke', d => d.id === selectedNode?.id_emprendimiento ? '#000000' : null)
+    .attr('stroke-width', d => d.id === selectedNode?.id_emprendimiento ? 2 : 0)
+    .attr('opacity', d => {
+      if (highlightedConnection &&
+          (d.id === highlightedConnection.sourceId || d.id === highlightedConnection.targetId)) {
+        return 1;
+      }
+      return highlightedConnection ? 0.3 : 1;
+    })
+    .call(d3.drag()
+      .on('start', dragstarted)
+      .on('drag', dragged)
+      .on('end', dragended))
+    .on('mouseover', function(event, d) {
+      if (!highlightedConnection ||
+          (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
+        d3.select(this).attr('opacity', 1);
+      }
+      d3.select(this).attr('data-bs-toggle', 'tooltip')
+        .attr('data-bs-title', `
+          <strong>${d.nombre_emprendimiento || 'Sin nombre'}</strong><br>
+          Seguidores: ${d.seguidores || 0}<br>
+          Popularidad: ${(d.total_likes || 0).toFixed(2)}<br>
+          Conectividad: ${(d.degree_centrality || 0).toFixed(2)}
+        `);
+      bootstrap.Tooltip.getOrCreateInstance(this).show();
+    })
+    .on('mouseout', function(event, d) {
+      if (highlightedConnection &&
+          (d.id !== highlightedConnection.sourceId && d.id !== highlightedConnection.targetId)) {
+        d3.select(this).attr('opacity', 0.3);
+      }
+      bootstrap.Tooltip.getOrCreateInstance(this).hide();
+    })
+    .on('click', (event, d) => selectNode(d.id));
+
+  simulation.nodes(filteredNodes).on('tick', () => {
+    nodes.each(d => {
+      d.x = Math.max(10, Math.min(width - 10, d.x));
+      d.y = Math.max(10, Math.min(height - 10, d.y));
+    });
+
+    links
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+    nodes
+      .attr('cx', d => d.x)
+      .attr('cy', d => d.y);
+  });
+
+  simulation.force('link').links(filteredLinks);
+  simulation.alpha(1).restart();
 }
 
 function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
-    d.fx = d.x;
-    d.fy = d.y;
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;
 }
 
 function dragged(event, d) {
-    d.fx = event.x;
-    d.fy = event.y;
+  d.fx = event.x;
+  d.fy = event.y;
 }
 
 function dragended(event, d) {
-    if (!event.active) simulation.alphaTarget(0);
-    d.fx = null;
-    d.fy = null;
-}
-
-function showTooltip(d) {
-    // Primero elimina cualquier tooltip existente
-    hideTooltip();
-    
-    // Luego crea el nuevo tooltip
-    const tooltip = d3.select('body').append('div')
-        .attr('class', 'tooltip')
-        .style('position', 'absolute')
-        .style('background', 'white')
-        .style('padding', '5px')
-        .style('border', '1px solid #ddd')
-        .style('z-index', '1000')  // Asegura que esté por encima de otros elementos
-        .html(`
-            <strong>${d.nombre_emprendimiento}</strong><br>
-            Seguidores: ${d.seguidores || 0}<br>
-            Popularidad: ${(d.total_likes || 0).toFixed(2)}<br>
-            Conectividad: ${d.degree_centrality.toFixed(2)}
-        `)
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY - 10) + 'px');
-}
-
-function hideTooltip() {
-    d3.selectAll('.tooltip').remove();
+  if (!event.active) simulation.alphaTarget(0);
+  d.fx = null;
+  d.fy = null;
 }
 
 function selectNode(id) {
-    // Eliminar tooltips existentes
-    hideTooltip();
-    
-    selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);    
-    resetGraph();
-    updateSidebar();
+  selectedNode = emprendimientosData.find(emp => emp.id_emprendimiento === id);
+  if (!selectedNode) {
+    console.warn('Nodo no encontrado en emprendimientosData:', id);
+    return;
+  }
+  resetGraph();
+  updateSidebar();
 }
 
 function resetGraph() {
-    highlightedConnection = null; // Limpiar conexión resaltada
-    updateGraph(); // Actualizar el grafo para mostrar todos los nodos y enlaces sin resaltado
+  highlightedConnection = null;
+  updateGraph();
 }
 
 function updateSidebar() {
-    if (!selectedNode) return;
+  if (!selectedNode) return;
 
-    const summaryContent = document.getElementById('summary-content');
-    summaryContent.innerHTML = `
-        <p><strong>ID:</strong> ${selectedNode.id_emprendimiento}</p>
-        <p><strong>Nombre:</strong> ${selectedNode.nombre_emprendimiento}</p>
-        <p><strong>Descripción:</strong> ${selectedNode.descripcion || 'Sin descripción'}</p>
-        <p><strong>Seguidores:</strong> ${selectedNode.seguidores || 0}</p>
-        <p><strong>Municipio:</strong> ${selectedNode.municipio}</p>
-        <p><strong>Temáticas:</strong> ${selectedNode.tematicas.join(', ')}</p>
-    `;
+  const summaryContent = document.getElementById('summary-content');
+  summaryContent.innerHTML = `
+    <p><strong>ID:</strong> ${selectedNode.id_emprendimiento}</p>
+    <p><strong>Nombre:</strong> ${selectedNode.nombre_emprendimiento || 'Sin nombre'}</p>
+    <p><strong>Descripción:</strong> ${selectedNode.descripcion || 'Sin descripción'}</p>
+    <p><strong>Seguidores:</strong> ${selectedNode.seguidores || 0}</p>
+    <p><strong>Municipio:</strong> ${selectedNode.municipio || 'N/A'}</p>
+    <p><strong>Temáticas:</strong> ${selectedNode.tematicas?.join(', ') || 'N/A'}</p>
+  `;
 
-    const ctx = document.getElementById('radar-chart').getContext('2d');
-    if (ctx.chart) {
-        ctx.chart.destroy();
+  const ctx = document.getElementById('radar-chart').getContext('2d');
+  if (ctx.chart) ctx.chart.destroy();
+  ctx.chart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: ['Popularidad', 'Conectividad', 'Diversidad Temática'],
+      datasets: [{
+        label: selectedNode.nombre_emprendimiento || 'Emprendimiento',
+        data: [
+          (selectedNode.seguidores || 0) / Number('{{ max_followers|default:1000|escapejs }}') * 100,
+          (selectedNode.degree_centrality || 0) * 100,
+          (selectedNode.tematicas?.length || 0) / Number('{{ max_tematicas|default:5|escapejs }}') * 100
+        ],
+        fill: true,
+        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+        borderColor: '#4CAF50',
+        pointBackgroundColor: '#4CAF50'
+      }]
+    },
+    options: {
+      scales: { r: { beginAtZero: true, max: 100 } }
     }
-    ctx.chart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: ['Popularidad', 'Conectividad', 'Diversidad Temática'],
-            datasets: [{
-                label: selectedNode.nombre_emprendimiento,
-                data: [
-                    (selectedNode.seguidores || 0) / Number('{{ max_followers|escapejs }}') * 100,
-                    (selectedNode.degree_centrality || 0) * 100,
-                    (selectedNode.tematicas.length || 0) / Number('{{ max_tematicas|escapejs }}') * 100
-                ],
-                fill: true,
-                backgroundColor: 'rgba(76, 175, 80, 0.2)',
-                borderColor: '#4CAF50',
-                pointBackgroundColor: '#4CAF50'
-            }]
-        },
-        options: {
-            scales: {
-                r: {
-                    beginAtZero: true,
-                    max: 100
-                }
-            }
-        }
-    });
+  });
 
-    fetch('/simulacion/recommend_emprendimientos/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        },
-        body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        const recContent = document.getElementById('recommendations-content');
-        if (data.status === 'success' && data.recommendations && data.recommendations.length > 0) {
-            recContent.innerHTML = data.recommendations.map(rec => `
-                <div class="rec-card">
-                    <p><strong>${rec.nombre}</strong> (ID: ${rec.id})</p>
-                    <p>Similitud: ${(rec.similitud * 100).toFixed(1)}%</p>
-                    <p>Temáticas: ${rec.tematicas.join(', ')}</p>
-                    <button onclick="viewConnection(${rec.id})">Ver Conexión</button>
-                </div>
-            `).join('');
-        } else {
-            recContent.innerHTML = '<p>No se encontraron recomendaciones disponibles.</p>';
-        }
-    })
-    .catch(error => {
-        console.error('Error al cargar recomendaciones:', error);
-        document.getElementById('recommendations-content').innerHTML = `<p>Error al cargar recomendaciones: ${error.message}. Por favor, verifica la conexión al servidor o contacta al administrador.</p>`;
-    });
-
-    const community = graphData.nodes.find(n => n.id === selectedNode.id_emprendimiento).comunidad_louvain;
-    const communityEmps = graphData.nodes.filter(n => n.comunidad_louvain === community);
-    const topEmps = communityEmps.sort((a, b) => b.betweenness_centrality - a.betweenness_centrality).slice(0, 5);
-    document.getElementById('community-content').innerHTML = `
-        <p><strong>Comunidad ${community}</strong> (${communityEmps.length} miembros)</p>
-        <p>Temáticas principales: ${selectedNode.tematicas.join(', ')}</p>
-        <p><strong>Emprendimientos clave:</strong></p>
-        ${topEmps.map(emp => `<p>${emp.nombre_emprendimiento} (Centralidad: ${emp.betweenness_centrality.toFixed(2)})</p>`).join('')}
-        <p><strong>Insight:</strong> Esta comunidad tiene alta densidad en ${selectedNode.tematicas[0] || 'temáticas variadas'}.</p>
-    `;
-
-    const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
-    graphData.links.forEach(link => {
-        const sourceNode = graphData.nodes.find(n => n.id === (link.source.id || link.source));
-        const targetNode = graphData.nodes.find(n => n.id === (link.target.id || link.target));
-        if (sourceNode && targetNode) {
-            const com1 = sourceNode.comunidad_louvain;
-            const com2 = targetNode.comunidad_louvain;
-            heatmapData[com1][com2] += link.weight;
-            heatmapData[com2][com1] += link.weight;
-        }
-    });
-
-    const heatmapCtx = document.getElementById('heatmap-chart').getContext('2d');
-    if (heatmapCtx.chart) {
-        heatmapCtx.chart.destroy();
+  fetch('/simulacion/recommend_emprendimientos/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+    },
+    body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+  })
+  .then(response => {
+    if (!response.ok) throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+    return response.json();
+  })
+  .then(data => {
+    const recContent = document.getElementById('recommendations-content');
+    if (data.status === 'success' && data.recommendations && data.recommendations.length > 0) {
+      recContent.innerHTML = data.recommendations.map(rec => `
+        <div class="card mb-2">
+          <div class="card-body">
+            <h6 class="card-title">${rec.nombre || 'Sin nombre'} (ID: ${rec.id})</h6>
+            <p class="card-text"><strong>Similitud:</strong> ${(rec.similitud * 100).toFixed(1)}%</p>
+            <p class="card-text"><strong>Temáticas:</strong> ${rec.tematicas?.join(', ') || 'N/A'}</p>
+            <button onclick="viewConnection(${rec.id})" class="btn btn-outline-primary btn-sm">
+              <i class="bi bi-link-45deg me-2"></i>Ver Conexión
+            </button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      recContent.innerHTML = '<p class="text-muted">No se encontraron recomendaciones disponibles.</p>';
     }
-    heatmapCtx.chart = new Chart(heatmapCtx, {
-        type: 'matrix',
-        data: {
-            datasets: [{
-                label: 'Conexión entre comunidades',
-                data: heatmapData.flatMap((row, i) => row.map((val, j) => ({ x: j, y: i, v: val }))),
-                backgroundColor: c => `rgba(54, 162, 235, ${c.raw.v / Math.max(...heatmapData.flat()) || 0})`,
-                width: ({ chart }) => chart.chartArea.width / nCommunities,
-                height: ({ chart }) => chart.chartArea.height / nCommunities
-            }]
-        },
-        options: {
-            scales: {
-                x: { title: { display: true, text: 'Comunidad' } },
-                y: { title: { display: true, text: 'Comunidad' } }
-            }
-        }
-    });
+  })
+  .catch(error => {
+    console.error('Error al cargar recomendaciones:', error);
+    document.getElementById('recommendations-content').innerHTML = `<p class="text-danger">Error al cargar recomendaciones: ${error.message}</p>`;
+  });
 
-    document.getElementById('insight-text').innerHTML = selectedNode.seguidores < Number('{{ max_followers|escapejs }}') / 4
-        ? `⚠️ El emprendimiento seleccionado tiene baja conexión con clusters de alto crecimiento.`
-        : `💡 ${selectedNode.nombre_emprendimiento} está bien conectado en su comunidad.`;
+  const community = graphData.nodes.find(n => n.id === selectedNode.id_emprendimiento)?.comunidad_louvain;
+  if (community === undefined) {
+    document.getElementById('community-content').innerHTML = '<p class="text-muted">No se encontró información de comunidad.</p>';
+    return;
+  }
+  const communityEmps = graphData.nodes.filter(n => n.comunidad_louvain === community);
+  const topEmps = communityEmps.sort((a, b) => (b.betweenness_centrality || 0) - (a.betweenness_centrality || 0)).slice(0, 5);
+  document.getElementById('community-content').innerHTML = `
+    <p><strong>Comunidad ${community}</strong> (${communityEmps.length} miembros)</p>
+    <p><strong>Temáticas principales:</strong> ${selectedNode.tematicas?.join(', ') || 'N/A'}</p>
+    <p><strong>Emprendimientos clave:</strong></p>
+    ${topEmps.map(emp => `<p>${emp.nombre_emprendimiento || 'Sin nombre'} (Centralidad: ${(emp.betweenness_centrality || 0).toFixed(2)})</p>`).join('')}
+    <p><strong>Insight:</strong> Esta comunidad tiene alta densidad en ${selectedNode.tematicas?.[0] || 'temáticas variadas'}.</p>
+  `;
+
+  const heatmapData = Array.from({ length: nCommunities }, () => Array(nCommunities).fill(0));
+  graphData.links.forEach(link => {
+    const sourceNode = graphData.nodes.find(n => n.id === (typeof link.source === 'object' ? link.source.id : link.source));
+    const targetNode = graphData.nodes.find(n => n.id === (typeof link.target === 'object' ? link.target.id : link.target));
+    if (sourceNode && targetNode) {
+      const com1 = sourceNode.comunidad_louvain;
+      const com2 = targetNode.comunidad_louvain;
+      heatmapData[com1][com2] += link.weight || 1;
+      heatmapData[com2][com1] += link.weight || 1;
+    }
+  });
+
+  const heatmapCtx = document.getElementById('heatmap-chart').getContext('2d');
+  if (heatmapCtx.chart) heatmapCtx.chart.destroy();
+  heatmapCtx.chart = new Chart(heatmapCtx, {
+    type: 'matrix',
+    data: {
+      datasets: [{
+        label: 'Conexión entre comunidades',
+        data: heatmapData.flatMap((row, i) => row.map((val, j) => ({ x: j, y: i, v: val }))),
+        backgroundColor: c => `rgba(54, 162, 235, ${c.raw.v / Math.max(...heatmapData.flat()) || 0})`,
+        width: ({ chart }) => chart.chartArea.width / nCommunities,
+        height: ({ chart }) => chart.chartArea.height / nCommunities
+      }]
+    },
+    options: {
+      scales: {
+        x: { title: { display: true, text: 'Comunidad' } },
+        y: { title: { display: true, text: 'Comunidad' } }
+      }
+    }
+  });
+
+  document.getElementById('insight-text').innerHTML = selectedNode.seguidores < Number('{{ max_followers|default:1000|escapejs }}') / 4
+    ? `⚠️ El emprendimiento seleccionado tiene baja conexión con clusters de alto crecimiento.`
+    : `💡 ${selectedNode.nombre_emprendimiento || 'Emprendimiento'} está bien conectado en su comunidad.`;
 }
 
 function viewConnection(id) {
-    if (!selectedNode) {
-        alert('Por favor, selecciona un emprendimiento primero.');
-        return;
-    }
-    highlightedConnection = { sourceId: selectedNode.id_emprendimiento, targetId: id };
-    updateGraph();
+  if (!selectedNode) {
+    alert('Por favor, selecciona un emprendimiento primero.');
+    return;
+  }
+  highlightedConnection = { sourceId: selectedNode.id_emprendimiento, targetId: id };
+  updateGraph();
 }
 
 function generateReport() {
-    if (!selectedNode) {
-        alert('Por favor, selecciona un emprendimiento primero.');
-        return;
-    }
+  if (!selectedNode) {
+    alert('Por favor, selecciona un emprendimiento primero.');
+    return;
+  }
+  const btn = document.querySelector('.report-btn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Generando...';
+  btn.disabled = true;
 
-    // Mostrar mensaje de generación
-    const originalText = document.querySelector('.report-btn').textContent;
-    document.querySelector('.report-btn').textContent = 'Generando...';
-    document.querySelector('.report-btn').disabled = true;
-
-    // Enviar solicitud al servidor
-    fetch('/simulacion/generate_pdf_report/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        },
-        body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
-    })
-    .then(response => {
-        if (response.ok) {
-            return response.blob();
-        }
-        throw new Error('Error al generar el reporte');
-    })
-    .then(blob => {
-        // Crear enlace para descargar el PDF
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `reporte_${selectedNode.id_emprendimiento}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error al generar el reporte: ' + error.message);
-    })
-    .finally(() => {
-        // Restaurar estado del botón
-        document.querySelector('.report-btn').textContent = originalText;
-        document.querySelector('.report-btn').disabled = false;
-    });
+  fetch('/simulacion/generate_pdf_report/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+    },
+    body: `id_emprendimiento=${selectedNode.id_emprendimiento}`
+  })
+  .then(response => {
+    if (response.ok) return response.blob();
+    throw new Error('Error al generar el reporte');
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte_${selectedNode.id_emprendimiento}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Error al generar el reporte: ' + error.message);
+  })
+  .finally(() => {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  });
 }
-
-function saveSession() {
-    console.log('Guardando sesión...');
-    localStorage.removeItem('prediccionesGraphData');
-    localStorage.removeItem('prediccionesTimestamp');
-}
-
-
 
 function showTab(tabId) {
-    document.querySelectorAll('.sidebar-tabs button').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    document.querySelector(`.sidebar-tabs button[onclick="showTab('${tabId}')"]`).classList.add('active');
-    document.getElementById(tabId).classList.add('active');
+  bootstrap.Tab.getOrCreateInstance(document.querySelector(`[data-bs-target="#${tabId}"]`)).show();
 }
 
 updateGraph();
