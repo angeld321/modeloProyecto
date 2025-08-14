@@ -1,245 +1,524 @@
 {% extends 'simulacion/topBar.html' %}
+{% load static %}
 {% block title %}Entorno Simulado - Evaluación{% endblock %}
+
 {% block content %}
-<div class="dashboard-container">
-    <!-- Loader -->
-    <div id="loader" style="display: none;">Cargando métricas...</div>
-    
-    <!-- JSON scripts para pasar datos de Django a JavaScript -->
-    {{ metrics|json_script:"metrics-data" }}
-    {{ conf_matrix|json_script:"conf-matrix-data" }}
-    {{ roc_data|json_script:"roc-data" }}
-    {{ pr_data|json_script:"pr-data" }}
-    {{ pred_dist|json_script:"pred-dist-data" }}
-    
-    <!-- Card para Métricas Básicas -->
-    <div class="card">
-        <h2>Métricas del Modelo</h2>
-        <table class="metrics-table">
-            <tr>
-                <th>Métrica</th>
-                <th>Valor</th>
-            </tr>
-            <tr>
-                <td>Precision</td>
-                <td class="{% if metrics.precision > 0.8 %}high{% elif metrics.precision < 0.5 %}low{% endif %}">{{ metrics.precision|floatformat:4 }}</td>
-            </tr>
-            <tr>
-                <td>Recall</td>
-                <td class="{% if metrics.recall > 0.8 %}high{% elif metrics.recall < 0.5 %}low{% endif %}">{{ metrics.recall|floatformat:4 }}</td>
-            </tr>
-            <tr>
-                <td>F1-Score</td>
-                <td class="{% if metrics.f1 > 0.8 %}high{% elif metrics.f1 < 0.5 %}low{% endif %}">{{ metrics.f1|floatformat:4 }}</td>
-            </tr>
-            <tr>
-                <td>AUC-ROC</td>
-                <td class="{% if metrics.auc > 0.8 %}high{% elif metrics.auc < 0.5 %}low{% endif %}">{{ metrics.auc|floatformat:4 }}</td>
-            </tr>
-            <tr>
-                <td>Average Precision</td>
-                <td class="{% if metrics.ap > 0.8 %}high{% elif metrics.ap < 0.5 %}low{% endif %}">{{ metrics.ap|floatformat:4 }}</td>
-            </tr>
-        </table>
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h2 class="me-auto mb-0">Dashboard de Evaluación</h2>
+
+    <!-- Selector de modelo -->
+    <div class="input-group" style="max-width: 520px;">
+      <span class="input-group-text">Modelo</span>
+      <select id="model-select" class="form-select">
+        {% for mf in model_files %}
+          <option value="{{ mf }}" {% if mf == default_model %}selected{% endif %}>{{ mf }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-outline-primary" id="reload-btn">Cargar</button>
     </div>
-    
-    <!-- Card para Visualizaciones -->
-    <div class="card">
-        <h2>Visualizaciones</h2>
-        <div class="charts">
-            <div class="chart-container">
-                <h3>Curva ROC</h3>
-                <canvas id="roc-chart"></canvas>
+  </div>
+
+  <!-- Loader -->
+  <div id="loader" class="alert alert-info d-none">Cargando métricas y gráficas…</div>
+
+  <div class="row g-3">
+    <!-- Métricas básicas -->
+    <div class="col-12 col-xl-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Métricas (umbral: <span id="threshold-label">0.50</span>)</h5>
+          <table class="table table-sm align-middle" id="metrics-table">
+            <thead>
+              <tr>
+                <th>Métrica</th><th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Precision</td><td data-k="precision">—</td></tr>
+              <tr><td>Recall</td><td data-k="recall">—</td></tr>
+              <tr><td>F1-Score</td><td data-k="f1">—</td></tr>
+              <tr><td>AUC-ROC</td><td data-k="auc">—</td></tr>
+              <tr><td>Average Precision</td><td data-k="ap">—</td></tr>
+              <tr><td>Accuracy</td><td data-k="accuracy">—</td></tr>
+            </tbody>
+          </table>
+
+          <div class="mb-2">
+            <label class="form-label">Umbral de predicción</label>
+            <div class="d-flex align-items-center gap-2">
+              <input type="range" min="0" max="1" step="0.01" value="0.5" id="threshold-slider" class="form-range" style="flex:1">
+              <button class="btn btn-sm btn-primary" id="btn-recalc">Recalcular</button>
             </div>
-            <div class="chart-container">
-                <h3>Curva Precision-Recall</h3>
-                <canvas id="pr-chart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h3>Matriz de Confusión</h3>
-                <canvas id="conf-matrix"></canvas>
-            </div>
-            <div class="chart-container">
-                <h3>Distribución de Predicciones</h3>
-                <canvas id="pred-hist"></canvas>
-            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="btn-export-metrics">Exportar CSV Métricas</button>
+            <button class="btn btn-outline-secondary btn-sm" id="btn-export-errors">Exportar CSV Errores</button>
+          </div>
         </div>
+      </div>
     </div>
-    
-    <!-- Card para Filtros Interactividad -->
-    <div class="card">
-        <h2>Filtros</h2>
-        <label>Umbral de Predicción:</label>
-        <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0.5">
-        <span id="threshold-value">0.5</span>
-        <button onclick="recalculateMetrics()">Recalcular</button>
-        <button onclick="exportCSV()">Exportar CSV</button>
+
+    <!-- Curvas ROC y PR -->
+    <div class="col-12 col-xl-8">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Curvas ROC & Precision-Recall</h5>
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <canvas id="chart-roc"></canvas>
+            </div>
+            <div class="col-12 col-md-6">
+              <canvas id="chart-pr"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    
-    <!-- Card para Errores Comunes -->
-    <div class="card">
-        <h2>Errores Comunes</h2>
-        <p>En desarrollo: Ejemplos de falsas positivas/negativas.</p>
+
+    <!-- Confusion matrix + histograma -->
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Matriz de Confusión</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered text-center w-auto mb-3 mx-auto" id="conf-table">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="align-middle">Real \ Pred</th>
+                  <th colspan="2">Predicción</th>
+                </tr>
+                <tr>
+                  <th>0</th><th>1</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>0</th><td id="cm-tn">—</td><td id="cm-fp">—</td>
+                </tr>
+                <tr>
+                  <th>1</th><td id="cm-fn">—</td><td id="cm-tp">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <canvas id="chart-conf"></canvas>
+        </div>
+      </div>
     </div>
+
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title">Distribución de Predicciones</h5>
+          <canvas id="chart-hist"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Errores (FP/FN) + mini grafo -->
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Errores Comunes (FP/FN) & Mini-Grafo</h5>
+          <div class="row g-3">
+            <div class="col-12 col-lg-6">
+              <div class="table-responsive" style="max-height: 300px; overflow:auto;">
+                <table class="table table-sm table-striped">
+                  <thead>
+                    <tr><th>#</th><th>Tipo</th><th>Score</th><th>y_true</th><th>u</th><th>v</th></tr>
+                  </thead>
+                  <tbody id="errors-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div id="error-graph" style="width: 100%; height: 340px; border:1px solid #eee; border-radius:8px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparación con otro modelo -->
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Comparación vs. otro modelo</h5>
+          <div class="d-flex align-items-center gap-2 mb-3" style="max-width: 520px;">
+            <span>Comparar con:</span>
+            <select id="compare-select" class="form-select">
+              <option value="">— Selecciona un modelo —</option>
+              {% for mf in model_files %}
+                <option value="{{ mf }}">{{ mf }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <canvas id="chart-radar"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<style>
-.dashboard-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-    padding: 20px;
-}
-.card {
-    border: 1px solid #ddd;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-.metrics-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.metrics-table th, .metrics-table td {
-    border: 1px solid #ddd;
-    padding: 8px;
-}
-.high {
-    color: green;
-}
-.low {
-    color: red;
-}
-.charts {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-}
-.chart-container {
-    border: 1px solid #eee;
-    padding: 10px;
-}
-#loader {
-    text-align: center;
-    padding: 20px;
-}
-</style>
+<!-- Librerías -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    // Obtener datos desde los scripts JSON
-    const metricsData = JSON.parse(document.getElementById('metrics-data').textContent);
-    const confMatrixData = JSON.parse(document.getElementById('conf-matrix-data').textContent);
-    const rocData = JSON.parse(document.getElementById('roc-data').textContent);
-    const prData = JSON.parse(document.getElementById('pr-data').textContent);
-    const predDistData = JSON.parse(document.getElementById('pred-dist-data').textContent);
+(() => {
+  const $ = (s) => document.querySelector(s);
 
-    // Gráfico ROC
-    new Chart(document.getElementById('roc-chart'), {
-        type: 'line',
-        data: {
-            labels: rocData.fpr,
-            datasets: [{
-                label: 'ROC Curve',
-                data: rocData.tpr,
-                borderColor: 'blue',
-                fill: false
-            }]
-        },
-        options: { 
-            scales: { 
-                x: { 
-                    title: { 
-                        display: true, 
-                        text: 'False Positive Rate' 
-                    } 
-                }, 
-                y: { 
-                    title: { 
-                        display: true, 
-                        text: 'True Positive Rate' 
-                    } 
-                } 
-            }  
-        }  
-    });  
+  // CSRF para POST
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+  const csrftoken = getCookie('csrftoken');
 
-    // Gráfico PR
-    new Chart(document.getElementById('pr-chart'), {
-        type: 'line',
-        data: {
-            labels: prData.recall,
-            datasets: [{
-                label: 'PR Curve',
-                data: prData.precision,
-                borderColor: 'green',
-                fill: false
-            }]
-        },
-        options: {
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Recall'
-                    }
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: 'Precision'
-                    }
-                }
-            }
+  const defaultModel = "{{ default_model }}";
+  const modelSelect = $("#model-select");
+  const compareSelect = $("#compare-select");
+  const loader = $("#loader");
+  const thresholdSlider = $("#threshold-slider");
+  const thresholdLabel = $("#threshold-label");
+
+  // Charts
+  let rocChart, prChart, histChart, confChart, radarChart;
+
+  // Estado global actual
+  let CURRENT = {
+    model: defaultModel,
+    metrics: null,
+    hist: null,
+    errors: null
+  };
+
+  function showLoader(flag) {
+    loader.classList.toggle("d-none", !flag);
+  }
+
+  function fmt(x) {
+    if (x === null || x === undefined || Number.isNaN(x)) return "—";
+    return Number(x).toFixed(4);
+  }
+
+  function fillMetricsTable(metrics) {
+    const tbl = $("#metrics-table");
+    ["precision","recall","f1","auc","ap","accuracy"].forEach(k => {
+      const td = tbl.querySelector(`[data-k="${k}"]`);
+      if (td) td.textContent = fmt(metrics[k]);
+    });
+
+    // Confusion table
+    const cm = metrics.conf_matrix || [[0,0],[0,0]];
+    $("#cm-tn").textContent = cm[0][0];
+    $("#cm-fp").textContent = cm[0][1];
+    $("#cm-fn").textContent = cm[1][0];
+    $("#cm-tp").textContent = cm[1][1];
+
+    // Conf bar
+    const ctxC = $("#chart-conf");
+    if (confChart) confChart.destroy();
+    confChart = new Chart(ctxC, {
+      type: "bar",
+      data: {
+        labels: ["TN","FP","FN","TP"],
+        datasets: [{
+          label: "Recuento",
+          data: [cm[0][0], cm[0][1], cm[1][0], cm[1][1]]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  function drawROC(rocData) {
+    const ctx = $("#chart-roc");
+    if (rocChart) rocChart.destroy();
+    rocChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: rocData.fpr,
+        datasets: [{ label: "ROC (TPR vs FPR)", data: rocData.tpr }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: "FPR" }, min: 0, max: 1 },
+          y: { title: { display: true, text: "TPR" }, min: 0, max: 1 }
         }
+      }
+    });
+  }
+
+  function drawPR(prData) {
+    const ctx = $("#chart-pr");
+    if (prChart) prChart.destroy();
+    prChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: prData.recall,
+        datasets: [{ label: "PR (Precision vs Recall)", data: prData.precision }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: "Recall" }, min: 0, max: 1 },
+          y: { title: { display: true, text: "Precision" }, min: 0, max: 1 }
+        }
+      }
+    });
+  }
+
+  function drawHist(hist) {
+    const ctx = $("#chart-hist");
+    if (histChart) histChart.destroy();
+    histChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: hist.bin_centers.map(v => Number(v).toFixed(2)),
+        datasets: [{ label: "Frecuencia", data: hist.counts }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: "Probabilidad" } },
+          y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  function fillErrorsTable(errors) {
+    const body = $("#errors-body");
+    body.innerHTML = "";
+    let idx = 1;
+
+    function addRows(list) {
+      list.forEach(item => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${idx++}</td>
+          <td>${item.type}</td>
+          <td>${Number(item.score).toFixed(4)}</td>
+          <td>${item.y_true}</td>
+          <td>${item.u ?? "—"}</td>
+          <td>${item.v ?? "—"}</td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    addRows(errors.fp || []);
+    addRows(errors.fn || []);
+  }
+
+  function drawErrorGraph(errorGraph) {
+    const el = d3.select("#error-graph");
+    el.selectAll("*").remove();
+
+    const width = el.node().clientWidth;
+    const height = el.node().clientHeight;
+
+    const svg = el.append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    const nodes = errorGraph.nodes || [];
+    const links = errorGraph.links || [];
+
+    const color = d => {
+      // Colorea por tipo de enlace (FP/FN)
+      // Si hay varios enlaces al mismo nodo, quedará mezcla; vale para una visual rápida.
+      return "#888";
+    }
+
+    const sim = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links).id(d => d.id).distance(40).strength(0.9))
+      .force("charge", d3.forceManyBody().strength(-80))
+      .force("center", d3.forceCenter(width/2, height/2));
+
+    const link = svg.append("g")
+      .attr("stroke", "#bbb")
+      .attr("stroke-width", 1)
+      .selectAll("line")
+      .data(links)
+      .enter().append("line")
+      .attr("stroke", d => d.etype === "FP" ? "#e67e22" : "#e74c3c");
+
+    const node = svg.append("g")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5)
+      .selectAll("circle")
+      .data(nodes)
+      .enter().append("circle")
+      .attr("r", 5)
+      .attr("fill", "#3498db")
+      .call(drag(sim));
+
+    node.append("title").text(d => `Nodo ${d.id}`);
+
+    sim.on("tick", () => {
+      link.attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+      node.attr("cx", d => d.x)
+          .attr("cy", d => d.y);
     });
 
-    // Matriz de Confusión (Heatmap)
-    new Chart(document.getElementById('conf-matrix'), {
-        type: 'matrix',
-        data: {
-            datasets: [{
-                data: confMatrixData.flatMap((row, i) => row.map((val, j) => ({ x: j, y: i, v: val }))),
-                backgroundColor: (ctx) => `rgba(0, 0, 255, ${ctx.raw.v / Math.max(...confMatrixData.flat())})`
-            }]
-        },
-        options: { scales: { x: { type: 'category', labels: ['Negative', 'Positive'] }, y: { type: 'category', labels: ['Negative', 'Positive'] } } } 
+    function drag(simulation) {
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      }
+      function dragged(event, d) {
+        d.fx = event.x; d.fy = event.y;
+      }
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      }
+      return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+    }
+  }
+
+  async function fetchData(modelName) {
+    showLoader(true);
+    const url = new URL("{% url 'simulacion:evaluacion_data' %}", window.location.origin);
+    url.searchParams.set("model", modelName);
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    showLoader(false);
+    if (data.status !== "ok") throw new Error(data.message || "Error");
+    return data;
+  }
+
+  function updateAll(data) {
+    CURRENT.model = data.model_name;
+    CURRENT.metrics = data.metrics;
+    CURRENT.hist = data.hist;
+    CURRENT.errors = { fp: data.errors.fp, fn: data.errors.fn };
+
+    thresholdLabel.textContent = Number(thresholdSlider.value).toFixed(2);
+
+    fillMetricsTable(data.metrics);
+    drawROC(data.roc);
+    drawPR(data.pr);
+    drawHist(data.hist);
+    fillErrorsTable(data.errors);
+    drawErrorGraph(data.error_graph);
+  }
+
+  async function recalcThreshold() {
+    thresholdLabel.textContent = Number(thresholdSlider.value).toFixed(2);
+    showLoader(true);
+    const res = await fetch("{% url 'simulacion:recalculate_metrics' %}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+      body: JSON.stringify({ threshold: Number(thresholdSlider.value), model: modelSelect.value })
     });
+    showLoader(false);
+    const js = await res.json();
+    if (js.status !== "ok") {
+      alert(js.message || "Error al recalcular");
+      return;
+    }
+    fillMetricsTable(js.metrics);
+  }
 
-    // Histograma de Predicciones
-    new Chart(document.getElementById('pred-hist'), {
-        type: 'histogram',
-        data: {
-            labels: predDistData,
-            datasets: [{
-                label: 'Distribución de Predicciones',
-                data: predDistData,
-                backgroundColor: 'rgba(75, 192, 192, 0.6)'
-            }]
-        },
-        options: { scales: { x: { title: { display: true, text: 'Probabilidad' } }, y: { title: { display: true, text: 'Frecuencia' } } } } 
+  async function loadAndRender() {
+    try {
+      const data = await fetchData(modelSelect.value);
+      updateAll(data);
+      // Al cambiar modelo, resetea radar
+      if (radarChart) radarChart.destroy();
+      compareSelect.value = "";
+    } catch (e) {
+      showLoader(false);
+      alert(e.message || e);
+    }
+  }
+
+  async function compareModels() {
+    const other = compareSelect.value;
+    if (!other) {
+      if (radarChart) radarChart.destroy();
+      return;
+    }
+    const url = new URL("{% url 'simulacion:model_summary' %}", window.location.origin);
+    url.searchParams.set("model", other);
+    const res = await fetch(url.toString());
+    const js = await res.json();
+    if (js.status !== "ok") {
+      alert(js.message || "No se pudo comparar");
+      return;
+    }
+
+    const m1 = CURRENT.metrics || {};
+    const m2 = js.metrics_05 || {};
+
+    const labels = ["precision","recall","f1","auc","ap","accuracy"];
+    const d1 = labels.map(k => Number(m1[k] ?? 0));
+    const d2 = labels.map(k => Number(m2[k] ?? 0));
+
+    const ctx = $("#chart-radar");
+    if (radarChart) radarChart.destroy();
+    radarChart = new Chart(ctx, {
+      type: "radar",
+      data: {
+        labels,
+        datasets: [
+          { label: modelSelect.value, data: d1 },
+          { label: js.model_name, data: d2 }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { r: { min: 0, max: 1 } }
+      }
     });
+  }
 
-    // Recalcular métricas con umbral
-    window.recalculateMetrics = function() {
-        const threshold = parseFloat(document.getElementById('threshold-slider').value);
-        document.getElementById('threshold-value').textContent = threshold.toFixed(2);
-        // Lógica para recalcular vía Ajax (implementar en backend)
-        // fetch('/simulacion/recalculate_metrics/', { ... })
-    };
+  function exportCSV(filename, rows) {
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], {type: "text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
 
-    // Exportar CSV
-    window.exportCSV = function() {
-        const csvContent = "data:text/csv;charset=utf-8," + Object.entries(metricsData).map(([k, v]) => `${k},${v}`).join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement('a');
-        link.setAttribute('href', encodedUri);
-        link.setAttribute('download', 'metrics.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-});
+  $("#btn-export-metrics").addEventListener("click", () => {
+    const m = CURRENT.metrics || {};
+    const rows = [["metric","value"]].concat(Object.entries(m).map(([k,v]) => [k, v]));
+    exportCSV(`metrics_${modelSelect.value}.csv`, rows);
+  });
+
+  $("#btn-export-errors").addEventListener("click", () => {
+    const errs = (CURRENT.errors?.fp || []).concat(CURRENT.errors?.fn || []);
+    const rows = [["idx","type","score","y_true","u","v"]];
+    errs.forEach(e => rows.push([e.idx, e.type, e.score, e.y_true, e.u ?? "", e.v ?? ""]));
+    exportCSV(`errors_${modelSelect.value}.csv`, rows);
+  });
+
+  $("#reload-btn").addEventListener("click", loadAndRender);
+  $("#btn-recalc").addEventListener("click", recalcThreshold);
+  compareSelect.addEventListener("change", compareModels);
+
+  // Inicial
+  loadAndRender();
+})();
 </script>
 {% endblock %}

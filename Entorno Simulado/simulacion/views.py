@@ -32,7 +32,13 @@ from datetime import datetime
 from sklearn.cluster import KMeans   
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-
+import glob
+from django.views.decorators.http import require_GET, require_POST
+from sklearn.metrics import (
+    roc_auc_score, average_precision_score, precision_recall_curve, roc_curve,
+    confusion_matrix, precision_recall_fscore_support, accuracy_score
+)
+import math
 
 
 
@@ -399,7 +405,7 @@ def predicciones(request):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     in_channels = x.shape[1]
     model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
-    model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
+    model_path = os.path.join(BASE_DIR, 'Modelo/modelo_Entorno__20250813_224446.pth')
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
@@ -648,75 +654,361 @@ def generate_pdf_report(request):
 
 """
 
-def evaluacion(request):
-    global SHARED_DATA
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    # Cargar el modelo
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = GraphSAGE(in_channels=120, hidden_channels=256, out_channels=128).to(device)
-    model_path = os.path.join(BASE_DIR, 'Modelo/model_5_20250627_184503.pth')
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
+# Si usas CPU en servidor, deja CPU. Si tienes CUDA disponible, el código lo soporta igual.
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Nombre del modelo por defecto que mencionaste
+DEFAULT_MODEL_NAME = "modelo_Entorno__20250813_224446.pth"
+
+# Ruta base del app (la misma lógica que usas en predicciones)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(BASE_DIR, "Modelo")
+
+
+# ---------- Helpers internos ----------
+
+def _safe_torch_load(path):
+    # Solo usar weights_only=False si confías en el origen del .pth
+    ckpt = torch.load(path, map_location=DEVICE, weights_only=False)
+    return ckpt
+
+def _list_pth_models():
+    """
+    Lista los .pth en la carpeta Modelos para comparar versiones.
+    """
+    if not os.path.isdir(MODELS_DIR):
+        return []
+    files = glob.glob(os.path.join(MODELS_DIR, "*.pth"))
+    # Solo nombres (sin ruta)
+    return sorted([os.path.basename(f) for f in files])
+
+def _ensure_predictions_from_ckpt(ckpt):
+    """
+    Devuelve y_true (np.array), y_score (np.array en [0,1]) y, si está, el edge_label_index (pares de nodos) para grafo de errores.
+    Intenta usar payload guardado; si no, reconstruye el modelo y predice sobre test_data dentro del checkpoint.
+    """
+    # 1) Si el checkpoint ya trae payload de evaluación, úsalo directo
+    eval_payload = ckpt.get("eval_payload", {})
+    y_true = eval_payload.get("y_true", None)
+    y_score = eval_payload.get("y_score", None)
+    edge_label_index = eval_payload.get("edge_label_index", None)  # shape (2, N) o lista de pares
+
+    if y_true is not None and y_score is not None:
+        y_true = np.array(y_true).astype(np.float32)
+        y_score = np.array(y_score).astype(np.float32)
+        if isinstance(edge_label_index, list):
+            edge_label_index = np.array(edge_label_index, dtype=np.int64)
+        return y_true, y_score, edge_label_index
+
+    # 2) Si no hay payload, pero sí test_data, reconstruimos y predecimos
+    test_data = ckpt.get("test_data", None)
+    model_state = ckpt.get("model_state_dict", None)
+
+    if test_data is None or model_state is None:
+        raise RuntimeError(
+            "El checkpoint no contiene 'eval_payload' ni 'test_data' + 'model_state_dict'. "
+            "Guarda 'test_data' o 'eval_payload' al entrenar para habilitar este dashboard."
+        )
+
+    # Reconstruir el modelo GraphSAGE con dimensiones compatibles
+    in_channels = test_data.x.shape[1]
+    hidden_channels = 256
+    out_channels = 128
+
+    # Usa TU clase GraphSAGE definida arriba en tu views.py
+    model = GraphSAGE(in_channels, hidden_channels, out_channels).to(DEVICE)
+    model.load_state_dict(model_state)
     model.eval()
 
-    # Cargar test_data si no está en SHARED_DATA
-    if 'test_data' not in SHARED_DATA:
-        # Aquí debes cargar tus datos de prueba. Ejemplo:
-        from torch_geometric.data import Data
-        test_data = Data(
-            x=torch.randn(100, 120),  # Ajusta según tus datos reales
-            edge_index=torch.tensor([[0, 1], [1, 2]], dtype=torch.long),
-            edge_label=torch.tensor([1, 0], dtype=torch.float),
-            edge_label_index=torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
-        )
-        SHARED_DATA['test_data'] = test_data
-
-    test_data = SHARED_DATA['test_data'].to(device)
-    
-    # Generar predicciones
     with torch.no_grad():
-        h = model(test_data.x, test_data.edge_index)
-        pred = model.predict(h[test_data.edge_label_index[0]], h[test_data.edge_label_index[1]])
-        pred_np = pred.cpu().numpy()
-        pred_binary = (pred_np > 0.5).astype(int)  # Umbral por default
+        h = model(test_data.x.to(DEVICE), test_data.edge_index.to(DEVICE))
+        scores = model.predict(
+            h[test_data.edge_label_index[0]], h[test_data.edge_label_index[1]]
+        ).detach().cpu().numpy()
 
-    # Calcular métricas
-    if hasattr(test_data, 'edge_label'):
-        y_np = test_data.edge_label.cpu().numpy()
-        from sklearn.metrics import precision_score, f1_score, recall_score, roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
-        precision = precision_score(y_np, pred_binary)
-        recall = recall_score(y_np, pred_binary)
-        f1 = f1_score(y_np, pred_binary)
-        auc = roc_auc_score(y_np, pred_np)
-        ap = average_precision_score(y_np, pred_np)
-        conf_matrix = confusion_matrix(y_np, pred_binary).tolist()  # Para heatmap
-        fpr, tpr, _ = roc_curve(y_np, pred_np)
-        pr_precision, pr_recall, _ = precision_recall_curve(y_np, pred_np)
-        
-        # Datos para gráficos
-        roc_data = {'fpr': fpr.tolist(), 'tpr': tpr.tolist()}
-        pr_data = {'precision': pr_precision.tolist(), 'recall': pr_recall.tolist()}
-        pred_dist = pred_np.tolist()  # Para histograma
-        
-        metrics = {
-            'precision': precision,
-            'recall': recall,
-            'f1': f1,
-            'auc': auc,
-            'ap': ap
-        }
+    y_true = test_data.edge_label.detach().cpu().numpy().astype(np.float32)
+    y_score = scores.astype(np.float32)
+    eli = test_data.edge_label_index.detach().cpu().numpy()  # (2, N)
+
+    return y_true, y_score, eli
+
+def _compute_all_metrics(y_true, y_score, threshold=0.5):
+    """
+    Calcula precisión, recall, f1, AUC, AP, accuracy y matriz de confusión con un umbral dado.
+    """
+    y_pred = (y_score >= float(threshold)).astype(np.int32)
+
+    # Matriz de confusión (TN, FP, FN, TP)
+    cm = confusion_matrix(y_true, y_pred, labels=[0,1])
+    if cm.size == 4:
+        tn, fp, fn, tp = cm.ravel()
     else:
-        metrics = {}
-        conf_matrix = []
-        roc_data = {}
-        pr_data = {}
-        pred_dist = []
+        # Edge case si falta alguna clase
+        tn = cm[0,0] if cm.shape == (1,1) and y_true.max()==0 else 0
+        fp = cm[0,1] if cm.shape[1]>1 else 0
+        fn = cm[1,0] if cm.shape[0]>1 else 0
+        tp = cm[1,1] if cm.shape==(2,2) else 0
 
-    return render(request, 'simulacion/evaluacion.html', {
-        'metrics': metrics,
-        'conf_matrix': json.dumps(conf_matrix),
-        'roc_data': json.dumps(roc_data),
-        'pr_data': json.dumps(pr_data),
-        'pred_dist': json.dumps(pred_dist)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        y_true, y_pred, average="binary", zero_division=0
+    )
+    auc = roc_auc_score(y_true, y_score) if len(np.unique(y_true)) > 1 else float("nan")
+    ap = average_precision_score(y_true, y_score)
+    acc = accuracy_score(y_true, y_pred)
+
+    return {
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "auc": float(auc),
+        "ap": float(ap),
+        "accuracy": float(acc),
+        "conf_matrix": [[int(tn), int(fp)], [int(fn), int(tp)]],
+    }
+
+def _curves(y_true, y_score):
+    """
+    Devuelve ROC (fpr, tpr, thresholds) y PR (precision, recall, thresholds) como listas JSON-serializables.
+    """
+    fpr, tpr, roc_th = roc_curve(y_true, y_score)
+    precision, recall, pr_th = precision_recall_curve(y_true, y_score)
+    return {
+        "roc": {
+            "fpr": [float(x) for x in fpr],
+            "tpr": [float(x) for x in tpr],
+            "thresholds": [float(x) for x in roc_th],
+        },
+        "pr": {
+            "precision": [float(x) for x in precision],
+            "recall": [float(x) for x in recall],
+            "thresholds": [float(x) for x in pr_th] if pr_th is not None else [],
+        }
+    }
+
+def _histogram(y_score, bins=20):
+    """
+    Histograma simple en [0,1] para Chart.js tipo 'bar'.
+    """
+    counts, edges = np.histogram(y_score, bins=bins, range=(0.0, 1.0))
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    return {
+        "bin_centers": [float(x) for x in centers],
+        "counts": [int(c) for c in counts]
+    }
+
+def _top_errors(y_true, y_score, edge_label_index=None, top_k=30):
+    """
+    Extrae las top FP y top FN más "confiadas" (FP con score mayor; FN con score menor).
+    Devuelve lista con pares de nodos y score/label para mostrar y graficar mini-grafo.
+    """
+    y_true = y_true.astype(int)
+    idx_all = np.arange(len(y_true))
+
+    # FP: y_true=0, y_score alto
+    fp_mask = (y_true == 0)
+    fp_idx = idx_all[fp_mask]
+    fp_scores = y_score[fp_mask]
+    order_fp = np.argsort(fp_scores)[::-1]
+    top_fp_idx = fp_idx[order_fp][:top_k]
+
+    # FN: y_true=1, y_score bajo
+    fn_mask = (y_true == 1)
+    fn_idx = idx_all[fn_mask]
+    fn_scores = y_score[fn_mask]
+    order_fn = np.argsort(fn_scores)  # de menor a mayor
+    top_fn_idx = fn_idx[order_fn][:top_k]
+
+    def pack(indices, label):
+        out = []
+        for i in indices:
+            item = {"idx": int(i), "y_true": int(y_true[i]), "score": float(y_score[i]), "type": label}
+            if edge_label_index is not None and isinstance(edge_label_index, np.ndarray) and edge_label_index.shape[0] == 2:
+                u = int(edge_label_index[0, i])
+                v = int(edge_label_index[1, i])
+                item["u"] = u
+                item["v"] = v
+            out.append(item)
+        return out
+
+    fp_list = pack(top_fp_idx, "FP")
+    fn_list = pack(top_fn_idx, "FN")
+
+    # Grafo pequeño: nodos = únicos u,v de errores; enlaces = esos pares
+    nodes_set = set()
+    links = []
+    for item in fp_list + fn_list:
+        u = item.get("u")
+        v = item.get("v")
+        if u is not None and v is not None:
+            nodes_set.add(u)
+            nodes_set.add(v)
+            links.append({"source": u, "target": v, "etype": item["type"], "score": item["score"]})
+
+    nodes = [{"id": int(n)} for n in nodes_set]
+    return {
+        "fp": fp_list,
+        "fn": fn_list,
+        "error_graph": {"nodes": nodes, "links": links}
+    }
+
+
+# ---------- Vistas ----------
+
+@require_GET
+def evaluacion(request):
+    """
+    Renderiza la página; los datos se piden por AJAX a /evaluacion/data/.
+    """
+    models = _list_pth_models()
+    # Asegura que el modelo por defecto esté en la lista (por si acaso)
+    if DEFAULT_MODEL_NAME not in models:
+        models.insert(0, DEFAULT_MODEL_NAME)
+
+    return render(request, "simulacion/evaluacion.html", {
+        "default_model": DEFAULT_MODEL_NAME,
+        "model_files": models,
     })
+
+
+@require_GET
+def evaluacion_data(request):
+    """
+    Devuelve en JSON todas las métricas/calculables para inicializar el dashboard.
+    Acepta ?model=<nombre.pth> opcional.
+    """
+    model_name = request.GET.get("model", DEFAULT_MODEL_NAME)
+    model_path = os.path.join(MODELS_DIR, model_name)
+
+    if not os.path.isfile(model_path):
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": f"No existe el modelo: {model_name}"
+        }), status=404)
+
+    try:
+        ckpt = _safe_torch_load(model_path)
+        history = ckpt.get("history", {})
+        test_metrics = ckpt.get("test_metrics", {})
+
+        # Garantizar y_true / y_score / edge_label_index
+        y_true, y_score, edge_label_index = _ensure_predictions_from_ckpt(ckpt)
+
+        # Curvas y métricas con threshold 0.5 inicial
+        curves = _curves(y_true, y_score)
+        metrics = _compute_all_metrics(y_true, y_score, threshold=0.5)
+        hist = _histogram(y_score, bins=20)
+        errors = _top_errors(y_true, y_score, edge_label_index=edge_label_index, top_k=30)
+
+        # History saneado (por si no existe alguna métrica)
+        hist_out = {
+            "epochs": list(range(1, len(history.get("train_loss", [])) + 1)),
+            "train_loss": history.get("train_loss", []),
+            "val_auc": history.get("val_metrics", {}).get("auc", []),
+            "val_f1": history.get("val_metrics", {}).get("f1", []),
+            "val_precision": history.get("val_metrics", {}).get("precision", []),
+            "val_recall": history.get("val_metrics", {}).get("recall", []),
+        }
+
+        return JsonResponse(clean_for_json({
+            "status": "ok",
+            "model_name": model_name,
+            "history": hist_out,
+            "test_metrics_saved": test_metrics,
+            "metrics": metrics,
+            "roc": curves["roc"],
+            "pr": curves["pr"],
+            "hist": hist,
+            "errors": {
+                "fp": errors["fp"],
+                "fn": errors["fn"]
+            },
+            "error_graph": errors["error_graph"]
+        }))
+
+    except Exception as e:
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": repr(e)
+        }), status=500)
+
+
+@require_POST
+def recalculate_metrics(request):
+    """
+    Recalcula con un umbral nuevo. Recibe JSON:
+    { "threshold": 0.42, "model": "..." }
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        threshold = float(body.get("threshold", 0.5))
+        model_name = body.get("model", DEFAULT_MODEL_NAME)
+    except Exception:
+        threshold = 0.5
+        model_name = DEFAULT_MODEL_NAME
+
+    model_path = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isfile(model_path):
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": f"No existe el modelo: {model_name}"
+        }), status=404)
+
+    try:
+        ckpt = _safe_torch_load(model_path)
+        y_true, y_score, _ = _ensure_predictions_from_ckpt(ckpt)
+        metrics = _compute_all_metrics(y_true, y_score, threshold=threshold)
+        return JsonResponse(clean_for_json({
+            "status": "ok",
+            "metrics": metrics,
+            "threshold": threshold
+        }))
+    except Exception as e:
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": repr(e)
+        }), status=500)
+
+
+@require_GET
+def model_summary(request):
+    """
+    Devuelve resumen de un modelo dado para comparación (métricas base a threshold=0.5).
+    Acepta ?model=<nombre.pth>
+    """
+    model_name = request.GET.get("model", DEFAULT_MODEL_NAME)
+    model_path = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isfile(model_path):
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": f"No existe el modelo: {model_name}"
+        }), status=404)
+
+    try:
+        ckpt = _safe_torch_load(model_path)
+        test_metrics_saved = ckpt.get("test_metrics", {})
+        y_true, y_score, _ = _ensure_predictions_from_ckpt(ckpt)
+        metrics_05 = _compute_all_metrics(y_true, y_score, threshold=0.5)
+        return JsonResponse(clean_for_json({
+            "status": "ok",
+            "model_name": model_name,
+            "metrics_saved": test_metrics_saved,
+            "metrics_05": metrics_05
+        }))
+    except Exception as e:
+        return JsonResponse(clean_for_json({
+            "status": "error",
+            "message": repr(e)
+        }), status=500)
+    
+
+def clean_for_json(obj):
+    if isinstance(obj, list):
+        return [clean_for_json(x) for x in obj]
+    elif isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return None  # o un valor máximo permitido
+        return obj
+    else:
+        return obj

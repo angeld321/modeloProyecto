@@ -15,5 +15,8 @@ urlpatterns = [
     path('predicciones/', views.predicciones, name='predicciones'),
     path('recommend_emprendimientos/', views.recommend_emprendimientos, name='recommend_emprendimientos'),
     path('generate_pdf_report/', views.generate_pdf_report, name='generate_pdf_report'),    
-    path('evaluacion/', views.evaluacion, name='evaluacion'),
+    path('evaluacion/', views.evaluacion, name='evaluacion'),    
+    path("evaluacion/data/", views.evaluacion_data, name="evaluacion_data"),
+    path("evaluacion/recalculate/", views.recalculate_metrics, name="recalculate_metrics"),
+    path("evaluacion/model_summary/", views.model_summary, name="model_summary"),
 ]
