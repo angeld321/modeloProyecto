@@ -22,4 +22,6 @@ urlpatterns = [
     path("evaluacion/data/", views.evaluacion_data, name="evaluacion_data"),
     path("evaluacion/recalculate/", views.recalculate_metrics, name="recalculate_metrics"),
     path("evaluacion/model_summary/", views.model_summary, name="model_summary"),
+    path('check_missing_embeddings/', views.check_missing_embeddings, name='check_missing_embeddings'),
+    path('generar_embeddings/', views.generar_embeddings, name='generar_embeddings'),
 ]

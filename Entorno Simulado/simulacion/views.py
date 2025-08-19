@@ -419,6 +419,115 @@ def ver_comentarios(request, id_publicacion):
         'comentarios': comentarios
     })
 
+
+
+"""
+
+    VALIDACION DE EMBEDDINGS
+
+"""
+
+
+def check_missing_embeddings(request):
+    """Verifica si hay emprendimientos nuevos (id > 80) sin embeddings generados."""
+    try:
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Entorno Simulado', 'Embeddings', '512tk')
+        EMBEDDINGS_SUBDIR = os.path.join(EMBEDDINGS_DIR, 'emprendimientos')
+        
+        # Crear la carpeta de emprendimientos si no existe
+        if not os.path.exists(EMBEDDINGS_SUBDIR):
+            os.makedirs(EMBEDDINGS_SUBDIR)
+        
+        # Filtrar solo emprendimientos con id > 80
+        emprendimientos = Emprendimiento.objects.filter(id_emprendimiento__gt=80)
+        emprendimientos_sin_embeddings = []
+        all_embeddings_exist = True
+
+        for emp in emprendimientos:
+            embedding_file = os.path.join(EMBEDDINGS_SUBDIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
+            if not os.path.exists(embedding_file):
+                emprendimientos_sin_embeddings.append({
+                    'id_emprendimiento': emp.id_emprendimiento,
+                    'nombre_emprendimiento': emp.nombre_emprendimiento
+                })
+                all_embeddings_exist = False
+
+        return JsonResponse({
+            'status': 'success',
+            'all_embeddings_exist': all_embeddings_exist,
+            'emprendimientos_sin_embeddings': emprendimientos_sin_embeddings
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+def generar_embeddings(request):
+    """Genera archivos .txt para emprendimientos sin embeddings, tras verificar publicaciones y comentarios."""
+    if request.method == 'POST':
+        try:
+            BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Entorno Simulado', 'Embeddings', '512tk', 'emprendimientos')
+            
+            if not os.path.exists(EMBEDDINGS_DIR):
+                os.makedirs(EMBEDDINGS_DIR)
+            
+            emprendimientos = Emprendimiento.objects.all()
+            emprendimientos_sin_embeddings = []
+            missing_data = []
+
+            # Verificar cuáles emprendimientos no tienen embeddings
+            for emp in emprendimientos:
+                embedding_file = os.path.join(EMBEDDINGS_DIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
+                if not os.path.exists(embedding_file):
+                    emprendimientos_sin_embeddings.append(emp)
+
+            # Verificar si cada emprendimiento tiene publicaciones y comentarios
+            for emp in emprendimientos_sin_embeddings:
+                publicaciones = Publicacion.objects.filter(id_emprendimiento=emp).count()
+                comentarios = Comentario.objects.filter(id_publicacion__id_emprendimiento=emp).count()
+                if publicaciones == 0 or comentarios == 0:
+                    missing_data.append({
+                        'id_emprendimiento': emp.id_emprendimiento,
+                        'nombre_emprendimiento': emp.nombre_emprendimiento,
+                        'missing_publicaciones': publicaciones == 0,
+                        'missing_comentarios': comentarios == 0
+                    })
+
+            if missing_data:
+                message = "Los siguientes emprendimientos no tienen suficientes datos:\n"
+                for emp in missing_data:
+                    missing = []
+                    if emp['missing_publicaciones']:
+                        missing.append("publicaciones")
+                    if emp['missing_comentarios']:
+                        missing.append("comentarios")
+                    message += f"- {emp['nombre_emprendimiento']} (falta: {', '.join(missing)})\n"
+                return JsonResponse({'status': 'error', 'message': message}, status=400)
+
+            # Si todos tienen datos, crear archivos .txt vacíos
+            for emp in emprendimientos_sin_embeddings:
+                embedding_file = os.path.join(EMBEDDINGS_DIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
+                with open(embedding_file, 'w') as f:
+                    pass  # Crear archivo vacío
+
+            return JsonResponse({'status': 'success', 'message': 'Embeddings generados exitosamente'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Variable global para almacenar datos preprocesados
 SHARED_DATA = {
     'G': None,

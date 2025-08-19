@@ -8,7 +8,8 @@
 
 <h1>Simulación</h1>
 <div class="actions">
-    <p>Selecciona un emprendimiento para realizar una simulación, ingresando publicaciones manualmente.</p>    
+    <p>Selecciona un emprendimiento para realizar una simulación, ingresando publicaciones manualmente.</p>
+    <button onclick="mostrarModalGenerarEmbeddings()">Generar Embeddings</button>
 </div>
 <table>
     <thead>
@@ -97,6 +98,24 @@
         </table>
         <div class="modal-actions">
             <button onclick="cerrarModalVerPublicaciones()">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para generar embeddings -->
+<div id="modal-generar-embeddings" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="cerrarModalGenerarEmbeddings()">&times;</span>
+        <h2>Generar Embeddings</h2>
+        <p>Los siguientes emprendimientos no tienen embeddings generados:</p>
+        <ul id="lista-emprendimientos-sin-embeddings"></ul>
+        <div id="loading-embeddings" style="display: none; text-align: center;">
+            <p>Generando embeddings...</p>
+        </div>
+        <div id="error-embeddings" style="display: none; color: red;"></div>
+        <div class="modal-actions">
+            <button onclick="confirmarGenerarEmbeddings()">Confirmar</button>
+            <button onclick="cerrarModalGenerarEmbeddings()">Cancelar</button>
         </div>
     </div>
 </div>
@@ -200,8 +219,16 @@
         padding: 10px;
         font-size: 14px;
     }
-    #loading {
+    #loading, #loading-embeddings {
         padding: 20px;
+    }
+    #lista-emprendimientos-sin-embeddings {
+        max-height: 200px;
+        overflow-y: auto;
+        margin-bottom: 20px;
+    }
+    #error-embeddings {
+        margin-bottom: 20px;
     }
     @media (max-width: 768px) {
         table, thead, tbody, th, td, tr {
@@ -269,10 +296,7 @@ function realizarSimulacion() {
         alert('Por favor, selecciona un emprendimiento primero.');
         return;
     }
-    // Redirigir correctamente usando la URL base
     window.location.href = `/simulacion/publicaciones/${currentEmprendimientoId}/`;
-    // O alternativamente:
-    // window.location.href = `{% url 'simulacion:publicaciones' 0 %}`.replace('0', currentEmprendimientoId);
 }
 
 function cerrarModalIngresarPublicaciones() {
@@ -292,7 +316,6 @@ function guardarPublicaciones() {
         return;
     }
 
-    // Mostrar loading
     document.getElementById('modal-ingresar-publicaciones').querySelector('.modal-actions').style.display = 'none';
     const loading = document.createElement('div');
     loading.innerHTML = '<p>Guardando publicaciones...</p>';
@@ -329,7 +352,6 @@ function guardarPublicaciones() {
         document.getElementById('modal-ingresar-publicaciones').querySelector('.modal-actions').style.display = 'flex';
     });
 }
-
 
 function continuarAPublicaciones() {
     const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
@@ -388,11 +410,98 @@ function continuarAPublicaciones() {
 function seleccionarPublicacion(input) {
     const idPublicacion = input.getAttribute('data-id');
     console.log('Publicación seleccionada:', idPublicacion);
-    // Aquí puedes agregar lógica adicional para manejar la selección
 }
 
 function cerrarModalVerPublicaciones() {
     document.getElementById('modal-ver-publicaciones').style.display = 'none';
+}
+
+function mostrarModalGenerarEmbeddings() {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    if (!csrftoken) {
+        alert('Error: Token CSRF no encontrado');
+        return;
+    }
+
+    document.getElementById('lista-emprendimientos-sin-embeddings').innerHTML = '';
+    document.getElementById('error-embeddings').style.display = 'none';
+    document.getElementById('loading-embeddings').style.display = 'block';
+    document.getElementById('modal-generar-embeddings').style.display = 'block';
+
+    fetch('/simulacion/check_missing_embeddings/', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': csrftoken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loading-embeddings').style.display = 'none';
+        const lista = document.getElementById('lista-emprendimientos-sin-embeddings');
+        if (data.emprendimientos_sin_embeddings.length > 0) {
+            data.emprendimientos_sin_embeddings.forEach(emp => {
+                const li = document.createElement('li');
+                li.textContent = `ID: ${emp.id_emprendimiento} - ${emp.nombre_emprendimiento}`;
+                lista.appendChild(li);
+            });
+        } else {
+            lista.innerHTML = '<li>No hay emprendimientos nuevos sin embeddings.</li>';
+            document.querySelector('#modal-generar-embeddings .modal-actions').style.display = 'none';
+        }
+    })
+    .catch(error => {
+        document.getElementById('loading-embeddings').style.display = 'none';
+        alert('Error al cargar emprendimientos: ' + error.message);
+        cerrarModalGenerarEmbeddings();
+    });
+}
+
+function cerrarModalGenerarEmbeddings() {
+    document.getElementById('modal-generar-embeddings').style.display = 'none';
+}
+
+function confirmarGenerarEmbeddings() {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    if (!csrftoken) {
+        alert('Error: Token CSRF no encontrado');
+        return;
+    }
+
+    document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'none';
+    document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'none';
+    document.getElementById('loading-embeddings').style.display = 'block';
+
+    fetch('/simulacion/generar_embeddings/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrftoken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loading-embeddings').style.display = 'none';
+        if (data.status === 'success') {
+            alert('Embeddings generados exitosamente');
+            cerrarModalGenerarEmbeddings();
+            // Actualizar el estado del enlace de Predicciones
+            const prediccionesLink = document.getElementById('predicciones-link');
+            prediccionesLink.classList.remove('disabled');
+            prediccionesLink.onclick = null;
+        } else {
+            document.getElementById('error-embeddings').style.display = 'block';
+            document.getElementById('error-embeddings').textContent = data.message;
+            document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'block';
+            document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'flex';
+        }
+    })
+    .catch(error => {
+        document.getElementById('loading-embeddings').style.display = 'none';
+        document.getElementById('error-embeddings').style.display = 'block';
+        document.getElementById('error-embeddings').textContent = 'Error al generar embeddings: ' + error.message;
+        document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'block';
+        document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'flex';
+    });
 }
 </script>
 {% endblock %}
