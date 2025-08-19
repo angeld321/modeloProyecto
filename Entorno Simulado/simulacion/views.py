@@ -153,6 +153,39 @@ def update_csv_files():
                 raise Exception(f"No se puede escribir en {emprendimiento_tematica_csv_path}. Verifica si el archivo está abierto o en modo de solo lectura: {str(e)}")
         emprendimiento_tematica_df.to_csv(emprendimiento_tematica_csv_path, encoding='utf-8-sig', index=False)
 
+        # Crear o sobrescribir publicaciones.csv
+        publicaciones_csv_path = os.path.join(DATOS_DIR, 'publicaciones.csv')
+        publicaciones = Publicacion.objects.all()
+        publicaciones_data = [{
+            'id_publicacion': pub.id_publicacion,
+            'contenido': pub.contenido if pub.contenido else '',
+            'n_likes': pub.n_likes,
+            'id_emprendimiento': pub.id_emprendimiento_id
+        } for pub in publicaciones]
+        publicaciones_df = pd.DataFrame(publicaciones_data)
+        if os.path.exists(publicaciones_csv_path) and not os.access(publicaciones_csv_path, os.W_OK):
+            try:
+                os.remove(publicaciones_csv_path)  # Eliminar el archivo para recrearlo
+            except Exception as e:
+                raise Exception(f"No se puede escribir en {publicaciones_csv_path}. Verifica si el archivo está abierto o en modo de solo lectura: {str(e)}")
+        publicaciones_df.to_csv(publicaciones_csv_path, encoding='utf-8-sig', index=False)
+
+        # Crear o sobrescribir comentarios.csv
+        comentarios_csv_path = os.path.join(DATOS_DIR, 'comentarios.csv')
+        comentarios = Comentario.objects.all()
+        comentarios_data = [{
+            'id_comentario': com.id_comentario,
+            'comentario': com.comentario if com.comentario else '',
+            'id_publicacion': com.id_publicacion_id
+        } for com in comentarios]
+        comentarios_df = pd.DataFrame(comentarios_data)
+        if os.path.exists(comentarios_csv_path) and not os.access(comentarios_csv_path, os.W_OK):
+            try:
+                os.remove(comentarios_csv_path)  # Eliminar el archivo para recrearlo
+            except Exception as e:
+                raise Exception(f"No se puede escribir en {comentarios_csv_path}. Verifica si el archivo está abierto o en modo de solo lectura: {str(e)}")
+        comentarios_df.to_csv(comentarios_csv_path, encoding='utf-8-sig', index=False)
+
     except Exception as e:
         raise Exception(f"Error al crear o sobrescribir los CSV: {str(e)}")
 
@@ -300,11 +333,12 @@ def guardar_publicaciones(request):
                     id_emprendimiento=emprendimiento
                 )
 
+            # Actualizar los archivos CSV después de guardar publicaciones
+            update_csv_files()
+
             return redirect('simulacion:comentarios', id_emprendimiento=id_emprendimiento)
         except Emprendimiento.DoesNotExist:
             return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
-    
-    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
 def ver_publicaciones(request):
     if request.method == 'POST':
@@ -367,6 +401,9 @@ def guardar_comentarios(request):
                     comentario=contenido,
                     id_publicacion=publicacion
                 )
+
+            # Actualizar los archivos CSV después de guardar comentarios
+            update_csv_files()
 
             return JsonResponse({'status': 'success', 'message': 'Comentarios guardados exitosamente'})
         except Publicacion.DoesNotExist:
