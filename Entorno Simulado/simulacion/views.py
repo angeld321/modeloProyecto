@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.db.models import Count
 from django.http import JsonResponse
-from .models import Emprendimiento, Municipio, Alcance, Tematica, Publicacion, Seguidores, Comentario
+from .models import Emprendimiento, Municipio, Alcance, Tematica, Publicacion, Seguidores, Comentario, EmprendimientoTematica
 import random
 import json
 import requests  
@@ -39,6 +39,8 @@ from sklearn.metrics import (
     confusion_matrix, precision_recall_fscore_support, accuracy_score
 )
 import math
+import pymysql
+from sqlalchemy import create_engine
 
 
 
@@ -90,6 +92,171 @@ def lista_emprendimientos(request):
         'sort_order': sort_order,
     }
     return render(request, 'simulacion/emprendimientos.html', context)
+
+
+
+def update_csv_files():
+    """Función auxiliar para crear o sobrescribir los CSV con los datos de la base de datos."""
+    try:
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        DATOS_DIR = os.path.join(BASE_DIR, 'DATOS')
+
+        # Verificar que la carpeta DATOS existe
+        if not os.path.exists(DATOS_DIR):
+            os.makedirs(DATOS_DIR)  # Crear la carpeta si no existe
+
+        # Crear o sobrescribir emprendimientos.csv
+        emprendimientos_csv_path = os.path.join(DATOS_DIR, 'emprendimientos.csv')
+        emprendimientos = Emprendimiento.objects.all()
+        emprendimientos_data = [{
+            'id_emprendimiento': emp.id_emprendimiento,
+            'nombre_emprendimiento': emp.nombre_emprendimiento,
+            'descripcion': emp.descripcion if emp.descripcion else '',
+            'id_municipio_origen': emp.id_municipio_origen_id,
+            'id_alcance': emp.id_alcance_id
+        } for emp in emprendimientos]
+        emprendimientos_df = pd.DataFrame(emprendimientos_data)
+        if os.path.exists(emprendimientos_csv_path) and not os.access(emprendimientos_csv_path, os.W_OK):
+            try:
+                os.remove(emprendimientos_csv_path)  # Eliminar el archivo para recrearlo
+            except Exception as e:
+                raise Exception(f"No se puede escribir en {emprendimientos_csv_path}. Verifica si el archivo está abierto (por ejemplo, en Excel) o en modo de solo lectura: {str(e)}")
+        emprendimientos_df.to_csv(emprendimientos_csv_path, encoding='utf-8-sig', index=False)
+
+        # Crear o sobrescribir seguidores.csv
+        seguidores_csv_path = os.path.join(DATOS_DIR, 'seguidores.csv')
+        seguidores = Seguidores.objects.all()
+        seguidores_data = [{
+            'id_emprendimiento': seg.id_emprendimiento_id,
+            'cantidad': seg.cantidad
+        } for seg in seguidores]
+        seguidores_df = pd.DataFrame(seguidores_data)
+        if os.path.exists(seguidores_csv_path) and not os.access(seguidores_csv_path, os.W_OK):
+            try:
+                os.remove(seguidores_csv_path)
+            except Exception as e:
+                raise Exception(f"No se puede escribir en {seguidores_csv_path}. Verifica si el archivo está abierto o en modo de solo lectura: {str(e)}")
+        seguidores_df.to_csv(seguidores_csv_path, encoding='utf-8-sig', index=False)
+
+        # Crear o sobrescribir emprendimiento_tematica.csv
+        emprendimiento_tematica_csv_path = os.path.join(DATOS_DIR, 'emprendimiento_tematica.csv')
+        emprendimiento_tematica = EmprendimientoTematica.objects.values('id_emprendimiento_id', 'id_tematica_id')
+        emprendimiento_tematica_data = [{
+            'id_emprendimiento': et['id_emprendimiento_id'],
+            'id_tematica': et['id_tematica_id']
+        } for et in emprendimiento_tematica]
+        emprendimiento_tematica_df = pd.DataFrame(emprendimiento_tematica_data)
+        if os.path.exists(emprendimiento_tematica_csv_path) and not os.access(emprendimiento_tematica_csv_path, os.W_OK):
+            try:
+                os.remove(emprendimiento_tematica_csv_path)
+            except Exception as e:
+                raise Exception(f"No se puede escribir en {emprendimiento_tematica_csv_path}. Verifica si el archivo está abierto o en modo de solo lectura: {str(e)}")
+        emprendimiento_tematica_df.to_csv(emprendimiento_tematica_csv_path, encoding='utf-8-sig', index=False)
+
+    except Exception as e:
+        raise Exception(f"Error al crear o sobrescribir los CSV: {str(e)}")
+
+def agregar_emprendimiento(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+    
+    try:
+        nombre_emprendimiento = request.POST.get('nombre_emprendimiento')
+        descripcion = request.POST.get('descripcion', '')
+        id_municipio_origen = int(request.POST.get('id_municipio_origen'))
+        id_alcance = int(request.POST.get('id_alcance'))
+        tematicas = request.POST.getlist('tematicas')  # Lista de IDs de temáticas
+
+        # Validar datos
+        if not nombre_emprendimiento:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del emprendimiento es obligatorio'}, status=400)
+        if not Municipio.objects.filter(id_municipio=id_municipio_origen).exists():
+            return JsonResponse({'status': 'error', 'message': 'Municipio no válido'}, status=400)
+        if not Alcance.objects.filter(id_alcance=id_alcance).exists():
+            return JsonResponse({'status': 'error', 'message': 'Alcance no válido'}, status=400)
+        if not tematicas:
+            return JsonResponse({'status': 'error', 'message': 'Debe seleccionar al menos una temática'}, status=400)
+
+        # Crear emprendimiento en la base de datos
+        emprendimiento = Emprendimiento.objects.create(
+            nombre_emprendimiento=nombre_emprendimiento,
+            descripcion=descripcion if descripcion else None,
+            id_municipio_origen_id=id_municipio_origen,
+            id_alcance_id=id_alcance
+        )
+
+        # Crear registro de seguidores con cantidad=0
+        Seguidores.objects.create(
+            id_emprendimiento=emprendimiento,
+            cantidad=0
+        )
+
+        # Crear relaciones con temáticas
+        for id_tematica in tematicas:
+            if Tematica.objects.filter(id_tematica=id_tematica).exists():
+                EmprendimientoTematica.objects.create(
+                    id_emprendimiento=emprendimiento,
+                    id_tematica=Tematica.objects.get(id_tematica=id_tematica)
+                )
+
+        # Crear o sobrescribir archivos CSV con los datos de la base de datos
+        update_csv_files()
+
+        return redirect('simulacion:lista_emprendimientos')
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Error al agregar emprendimiento: {str(e)}'}, status=500)
+
+def modificar_emprendimiento(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+    
+    try:
+        id_emprendimiento = int(request.POST.get('id_emprendimiento'))
+        nombre_emprendimiento = request.POST.get('nombre_emprendimiento')
+        descripcion = request.POST.get('descripcion', '')
+        id_municipio_origen = int(request.POST.get('id_municipio_origen'))
+        id_alcance = int(request.POST.get('id_alcance'))
+        tematicas = request.POST.getlist('tematicas')  # Lista de IDs de temáticas
+
+        # Validar datos
+        if not nombre_emprendimiento:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del emprendimiento es obligatorio'}, status=400)
+        if not Municipio.objects.filter(id_municipio=id_municipio_origen).exists():
+            return JsonResponse({'status': 'error', 'message': 'Municipio no válido'}, status=400)
+        if not Alcance.objects.filter(id_alcance=id_alcance).exists():
+            return JsonResponse({'status': 'error', 'message': 'Alcance no válido'}, status=400)
+        if not tematicas:
+            return JsonResponse({'status': 'error', 'message': 'Debe seleccionar al menos una temática'}, status=400)
+
+        # Actualizar emprendimiento en la base de datos
+        try:
+            emprendimiento = Emprendimiento.objects.get(id_emprendimiento=id_emprendimiento)
+        except Emprendimiento.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Emprendimiento no encontrado'}, status=404)
+
+        emprendimiento.nombre_emprendimiento = nombre_emprendimiento
+        emprendimiento.descripcion = descripcion if descripcion else None
+        emprendimiento.id_municipio_origen_id = id_municipio_origen
+        emprendimiento.id_alcance_id = id_alcance
+        emprendimiento.save()
+
+        # Actualizar temáticas: eliminar las existentes y añadir las nuevas
+        EmprendimientoTematica.objects.filter(id_emprendimiento=emprendimiento).delete()
+        for id_tematica in tematicas:
+            if Tematica.objects.filter(id_tematica=id_tematica).exists():
+                EmprendimientoTematica.objects.create(
+                    id_emprendimiento=emprendimiento,
+                    id_tematica=Tematica.objects.get(id_tematica=id_tematica)
+                )
+
+        # Crear o sobrescribir archivos CSV con los datos de la base de datos
+        update_csv_files()
+
+        return redirect('simulacion:lista_emprendimientos')
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Error al modificar emprendimiento: {str(e)}'}, status=500)
+
+
 
 def simulacion(request):
     # Obtener todos los emprendimientos con conteos de publicaciones y comentarios

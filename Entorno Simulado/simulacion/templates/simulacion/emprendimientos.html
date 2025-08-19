@@ -58,10 +58,84 @@
         </form>
     </div>
     <div class="actions">
-        <button onclick="alert('Función de agregar en desarrollo')">Agregar nuevo emprendimiento</button>
-        <button onclick="alert('Función de modificar en desarrollo')">Modificar</button>
+        <button onclick="openAddModal()">Agregar nuevo emprendimiento</button>
+        <button onclick="openEditModal()">Modificar</button>
     </div>
 </div>
+
+<!-- Modal para agregar emprendimiento -->
+<div id="addEmprendimientoModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddModal()">&times;</span>
+        <h2>Agregar Nuevo Emprendimiento</h2>
+        <form method="POST" action="{% url 'simulacion:agregar_emprendimiento' %}">
+            {% csrf_token %}
+            <label for="nombre_emprendimiento">Nombre:</label>
+            <input type="text" id="nombre_emprendimiento" name="nombre_emprendimiento" required>
+            <label for="descripcion">Descripción:</label>
+            <textarea id="descripcion" name="descripcion"></textarea>
+            <label for="id_municipio_origen">Municipio:</label>
+            <select id="id_municipio_origen" name="id_municipio_origen" required>
+                <option value="">Seleccione un municipio</option>
+                {% for municipio in municipios %}
+                <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
+                {% endfor %}
+            </select>
+            <label for="id_alcance">Alcance:</label>
+            <select id="id_alcance" name="id_alcance" required>
+                <option value="">Seleccione un alcance</option>
+                {% for alcance in alcances %}
+                <option value="{{ alcance.id_alcance }}">{{ alcance.tipo }}</option>
+                {% endfor %}
+            </select>
+            <label for="tematicas">Temáticas:</label>
+            <select id="tematicas" name="tematicas" multiple required>
+                {% for tematica in tematicas %}
+                <option value="{{ tematica.id_tematica }}">{{ tematica.nombre }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Guardar</button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal para modificar emprendimiento -->
+<div id="editEmprendimientoModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditModal()">&times;</span>
+        <h2>Modificar Emprendimiento</h2>
+        <form method="POST" action="{% url 'simulacion:modificar_emprendimiento' %}">
+            {% csrf_token %}
+            <input type="hidden" id="edit_id_emprendimiento" name="id_emprendimiento">
+            <label for="edit_nombre_emprendimiento">Nombre:</label>
+            <input type="text" id="edit_nombre_emprendimiento" name="nombre_emprendimiento" required>
+            <label for="edit_descripcion">Descripción:</label>
+            <textarea id="edit_descripcion" name="descripcion"></textarea>
+            <label for="edit_id_municipio_origen">Municipio:</label>
+            <select id="edit_id_municipio_origen" name="id_municipio_origen" required>
+                <option value="">Seleccione un municipio</option>
+                {% for municipio in municipios %}
+                <option value="{{ municipio.id_municipio }}">{{ municipio.municipio }}</option>
+                {% endfor %}
+            </select>
+            <label for="edit_id_alcance">Alcance:</label>
+            <select id="edit_id_alcance" name="id_alcance" required>
+                <option value="">Seleccione un alcance</option>
+                {% for alcance in alcances %}
+                <option value="{{ alcance.id_alcance }}">{{ alcance.tipo }}</option>
+                {% endfor %}
+            </select>
+            <label for="edit_tematicas">Temáticas:</label>
+            <select id="edit_tematicas" name="tematicas" multiple required>
+                {% for tematica in tematicas %}
+                <option value="{{ tematica.id_tematica }}">{{ tematica.nombre }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Actualizar</button>
+        </form>
+    </div>
+</div>
+
 <table>
     <thead>
         <tr>
@@ -75,7 +149,16 @@
     </thead>
     <tbody>
         {% for emprendimiento in emprendimientos %}
-        <tr>
+            <tr
+            onclick="handleSelectEmprendimiento(this)"
+            data-id="{{ emprendimiento.id_emprendimiento }}"
+            data-nombre="{{ emprendimiento.nombre_emprendimiento|escape }}"
+            data-descripcion="{{ emprendimiento.descripcion|default_if_none:''|escape }}"
+            data-municipio="{{ emprendimiento.id_municipio_origen.id_municipio }}"
+            data-alcance="{{ emprendimiento.id_alcance.id_alcance }}"
+            data-tematicas='[{% for t in emprendimiento.tematicas.all %}"{{ t.id_tematica }}"{% if not forloop.last %}, {% endif %}{% endfor %}]'
+            >
+
             <td data-label="ID">{{ emprendimiento.id_emprendimiento }}</td>
             <td data-label="Nombre">{{ emprendimiento.nombre_emprendimiento }}</td>
             <td data-label="Descripción">{{ emprendimiento.descripcion|default:"Sin descripción" }}</td>
@@ -90,6 +173,7 @@
         {% endfor %}
     </tbody>
 </table>
+
 <style>
     table {
         border-collapse: collapse;
@@ -110,6 +194,7 @@
     }
     tr:hover {
         background-color: #f1f1f1;
+        cursor: pointer;
     }
     .filters-and-actions {
         margin-bottom: 20px;
@@ -142,6 +227,63 @@
     }
     .actions button:hover {
         background-color: #488DFA;
+    }
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+        background-color: #fefefe;
+        margin: 15% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 500px;
+        border-radius: 8px;
+    }
+    .modal-content form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .modal-content input, .modal-content textarea, .modal-content select {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .modal-content select[multiple] {
+        height: 100px;
+    }
+    .modal-content button {
+        padding: 10px;
+        background-color: #2776F5;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .modal-content button:hover {
+        background-color: #488DFA;
+    }
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close:hover,
+    .close:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
     }
     @media (max-width: 768px) {
         table, thead, tbody, th, td, tr {
@@ -179,6 +321,71 @@
             margin-left: 0;
             margin-top: 10px;
         }
+        .modal-content {
+            width: 90%;
+        }
     }
 </style>
+
+<script>
+    function openAddModal() {
+        document.getElementById('addEmprendimientoModal').style.display = 'block';
+    }
+
+    function closeAddModal() {
+        document.getElementById('addEmprendimientoModal').style.display = 'none';
+        document.getElementById('nombre_emprendimiento').value = '';
+        document.getElementById('descripcion').value = '';
+        document.getElementById('id_municipio_origen').value = '';
+        document.getElementById('id_alcance').value = '';
+        document.getElementById('tematicas').value = [];
+    }
+
+    function openEditModal() {
+        if (!selectedEmprendimiento) {
+            alert('Por favor, seleccione un emprendimiento haciendo clic en una fila de la tabla.');
+            return;
+        }
+        document.getElementById('editEmprendimientoModal').style.display = 'block';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editEmprendimientoModal').style.display = 'none';
+    }
+
+    let selectedEmprendimiento = null;
+
+    function selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas) {
+        selectedEmprendimiento = { id, nombre, descripcion, municipio, alcance, tematicas };
+        document.getElementById('edit_id_emprendimiento').value = id;
+        document.getElementById('edit_nombre_emprendimiento').value = nombre;
+        document.getElementById('edit_descripcion').value = descripcion;
+        document.getElementById('edit_id_municipio_origen').value = municipio;
+        document.getElementById('edit_id_alcance').value = alcance;
+        const tematicasSelect = document.getElementById('edit_tematicas');
+        for (let option of tematicasSelect.options) {
+            option.selected = tematicas.includes(option.value);
+        }
+    }
+
+    window.onclick = function(event) {
+        if (event.target == document.getElementById('addEmprendimientoModal')) {
+            closeAddModal();
+        }
+        if (event.target == document.getElementById('editEmprendimientoModal')) {
+            closeEditModal();
+        }
+    }
+
+    function handleSelectEmprendimiento(el) {
+        const id = el.dataset.id;
+        const nombre = el.dataset.nombre;
+        const descripcion = el.dataset.descripcion || "";
+        const municipio = el.dataset.municipio;
+        const alcance = el.dataset.alcance;
+        let tematicas = [];
+        try { tematicas = JSON.parse(el.dataset.tematicas || "[]"); } catch (e) {}
+        selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas);
+  }
+</script>
 {% endblock %}
