@@ -432,7 +432,7 @@ def check_missing_embeddings(request):
     """Verifica si hay emprendimientos nuevos (id > 80) sin embeddings generados."""
     try:
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Entorno Simulado', 'Embeddings', '512tk')
+        EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Embeddings', '512tk')
         EMBEDDINGS_SUBDIR = os.path.join(EMBEDDINGS_DIR, 'emprendimientos')
         
         # Crear la carpeta de emprendimientos si no existe
@@ -462,22 +462,25 @@ def check_missing_embeddings(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def generar_embeddings(request):
-    """Genera archivos .txt para emprendimientos sin embeddings, tras verificar publicaciones y comentarios."""
+    """Genera archivos .txt para emprendimientos nuevos (id > 80) sin embeddings, tras verificar publicaciones y comentarios."""
     if request.method == 'POST':
         try:
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Entorno Simulado', 'Embeddings', '512tk', 'emprendimientos')
+            EMBEDDINGS_DIR = os.path.join(BASE_DIR, 'Embeddings', '512tk')
+            EMBEDDINGS_SUBDIR = os.path.join(EMBEDDINGS_DIR, 'emprendimientos')
             
-            if not os.path.exists(EMBEDDINGS_DIR):
-                os.makedirs(EMBEDDINGS_DIR)
+            # Crear la carpeta de emprendimientos si no existe
+            if not os.path.exists(EMBEDDINGS_SUBDIR):
+                os.makedirs(EMBEDDINGS_SUBDIR)
             
-            emprendimientos = Emprendimiento.objects.all()
+            # Filtrar solo emprendimientos con id > 80
+            emprendimientos = Emprendimiento.objects.filter(id_emprendimiento__gt=80)
             emprendimientos_sin_embeddings = []
             missing_data = []
 
             # Verificar cuáles emprendimientos no tienen embeddings
             for emp in emprendimientos:
-                embedding_file = os.path.join(EMBEDDINGS_DIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
+                embedding_file = os.path.join(EMBEDDINGS_SUBDIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
                 if not os.path.exists(embedding_file):
                     emprendimientos_sin_embeddings.append(emp)
 
@@ -506,7 +509,7 @@ def generar_embeddings(request):
 
             # Si todos tienen datos, crear archivos .txt vacíos
             for emp in emprendimientos_sin_embeddings:
-                embedding_file = os.path.join(EMBEDDINGS_DIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
+                embedding_file = os.path.join(EMBEDDINGS_SUBDIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
                 with open(embedding_file, 'w') as f:
                     pass  # Crear archivo vacío
 
@@ -514,7 +517,6 @@ def generar_embeddings(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
-
 
 
 
