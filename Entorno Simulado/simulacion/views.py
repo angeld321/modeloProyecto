@@ -563,15 +563,8 @@ def generar_embeddings(request):
 
 
 
-# Variable global para almacenar datos preprocesados
-SHARED_DATA = {
-    'G': None,
-    'embeddings': None,
-    'node_ids': None,
-    'emprendimientos': None,
-    'emprendimiento_tematica': None,
-    'tematicas': None
-}
+# Variable global para almacenar datos por modelo
+SHARED_DATA = {}
 
 def load_emb(path):
     arr = np.load(path, allow_pickle=True)
@@ -607,33 +600,13 @@ class GraphSAGE(torch.nn.Module):
         h = torch.cat([x_src, x_dst], dim=1)
         return torch.sigmoid(self.predictor(h)).view(-1)
 
-# Diccionario global para almacenar datos por modelo
-SHARED_DATA = {}  # Ahora es {model_name: {G, embeddings, node_ids, ...}}
-
-def predicciones(request):
-    global SHARED_DATA
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    # Obtener lista de modelos disponibles
-    model_dir = os.path.join(BASE_DIR, 'Modelo')
-    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
-    if not model_files:
-        return render(request, 'simulacion/predicciones.html', {
-            'error': 'No se encontraron modelos en la carpeta Modelo/'
-        })
-    
-    # Seleccionar modelo por defecto (el más reciente basado en el nombre)
-    default_model = max(model_files, key=lambda x: x.split('__')[-1].replace('.pth', ''))
-    model_name = request.GET.get('model', default_model)
-    
+def initialize_model_data(BASE_DIR, model_name, model_files):
+    """Inicializa los datos del modelo y los almacena en SHARED_DATA."""
     if model_name not in model_files:
-        return render(request, 'simulacion/predicciones.html', {
-            'error': f'Modelo {model_name} no encontrado.'
-        })
+        return {'error': f'Modelo {model_name} no encontrado.'}
 
-    # Inicializar SHARED_DATA para este modelo si no existe
-    if model_name not in SHARED_DATA:
-        SHARED_DATA[model_name] = {}
+    if model_name in SHARED_DATA and SHARED_DATA[model_name].get('G') is not None:
+        return SHARED_DATA[model_name]
 
     # ================== DATOS ==================
     emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
@@ -645,12 +618,10 @@ def predicciones(request):
     tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
     
     # ================== EMBEDDINGS ==================
-    # Embeddings de los 80 principales
     desc_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/descripcion_embeddings.npy'))
     cont_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/contenido_embeddings.npy'))
     comm_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/comentario_embeddings.npy'))
     
-    # Embeddings de emprendimientos nuevos
     new_desc, new_cont, new_comm = [], [], []
     new_ids = []
     emb_dir = os.path.join(BASE_DIR, 'embeddings/512tk/emprendimientos')
@@ -674,6 +645,10 @@ def predicciones(request):
         new_comm = np.vstack(new_comm)
         comm_embs = np.vstack([comm_embs, new_comm])
 
+    id_to_desc_idx = {emp_id: i for i, emp_id in enumerate(emprendimientos['id_emprendimiento'].values[:desc_embs.shape[0]])}
+    id_to_cont_idx = {pub_id: i for i, pub_id in enumerate(publicaciones['id_publicacion'].values[:cont_embs.shape[0]])}
+    id_to_comm_idx = {com_id: i for i, com_id in enumerate(comentarios['id_comentario'].values[:comm_embs.shape[0]])}
+
     # ================== GRAFO ==================
     G = nx.Graph()
     for _, row in emprendimientos.iterrows():
@@ -685,7 +660,6 @@ def predicciones(request):
                    id_alcance=row['id_alcance'],
                    tematicas=temas)
 
-    # Relaciones entre publicaciones
     for _, pub in publicaciones.iterrows():
         id_emprendimiento = pub['id_emprendimiento']
         related_emprendimientos = emprendimiento_tematica[
@@ -699,7 +673,6 @@ def predicciones(request):
                 weight = pub['n_likes'] if pd.notna(pub['n_likes']) else 0
                 G.add_edge(id_emprendimiento, rel_emp, weight=weight + 1)
 
-    # Relaciones por similitud en temáticas, municipio y alcance
     for emp1 in G.nodes:
         for emp2 in G.nodes:
             if emp1 < emp2:
@@ -712,7 +685,6 @@ def predicciones(request):
                 if weight > 0:
                     G.add_edge(emp1, emp2, weight=weight)
 
-    # Seguidores
     for _, row in seguidores.iterrows():
         id_emprendimiento = row['id_emprendimiento']
         if id_emprendimiento in G.nodes:
@@ -755,16 +727,40 @@ def predicciones(request):
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
     for i, nid in enumerate(node_ids):
-        row = emprendimientos[emprendimientos.id_emprendimiento == nid]
-        de = desc_embs[row.index[0]] if not row.empty and row.index[0] < len(desc_embs) else np.zeros(emb_dim, dtype=np.float32)
+        if nid in id_to_desc_idx:
+            de = desc_embs[id_to_desc_idx[nid]]
+        else:
+            de = np.zeros(emb_dim, dtype=np.float32)
+
         p_rows = publicaciones[publicaciones.id_emprendimiento == nid]
-        pe = np.nanmean(cont_embs[p_rows.index.values], axis=0) if not p_rows.empty else np.zeros(emb_dim, dtype=np.float32)
+        if not p_rows.empty:
+            pub_embs = []
+            for pid in p_rows.id_publicacion.values:
+                if pid in id_to_cont_idx:
+                    pub_embs.append(cont_embs[id_to_cont_idx[pid]])
+            pe = np.nanmean(pub_embs, axis=0) if pub_embs else np.zeros(emb_dim, dtype=np.float32)
+        else:
+            pe = np.zeros(emb_dim, dtype=np.float32)
+
         pub_ids = p_rows.id_publicacion.values
         c_rows = comentarios[comentarios.id_publicacion.isin(pub_ids)]
-        ce = np.nanmean(comm_embs[c_rows.index.values], axis=0) if not c_rows.empty else np.zeros(emb_dim, dtype=np.float32)
+        if not c_rows.empty:
+            comm_embs_list = []
+            for cid in c_rows.id_comentario.values:
+                if cid in id_to_comm_idx:
+                    comm_embs_list.append(comm_embs[id_to_comm_idx[cid]])
+            ce = np.nanmean(comm_embs_list, axis=0) if comm_embs_list else np.zeros(emb_dim, dtype=np.float32)
+        else:
+            ce = np.zeros(emb_dim, dtype=np.float32)
+
         raw_text[i] = W_DESC * de + W_PUB * pe + W_COM * ce
 
-    svd = TruncatedSVD(n_components=120, random_state=42)
+    # Calcular dimensiones de características numéricas
+    dim_num = features_df.shape[1] - 1  # Excluye 'id_emprendimiento'
+    target_in_channels = 120  # Dimensión esperada por el modelo guardado
+    n_components_svd = max(1, target_in_channels - dim_num)  # Ajustar componentes SVD
+
+    svd = TruncatedSVD(n_components=n_components_svd, random_state=42)
     text_feats = svd.fit_transform(raw_text)
     for i, nid in enumerate(node_ids):
         G.nodes[nid]['text_features'] = text_feats[i]
@@ -800,19 +796,20 @@ def predicciones(request):
     edge_attr = torch.tensor(weights, dtype=torch.float)
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=len(node_ids))
 
+    # Verificar dimensión de entrada
+    if x.shape[1] != target_in_channels:
+        return {'error': f'Dimensión de entrada incorrecta: se esperaba {target_in_channels}, pero se obtuvo {x.shape[1]}'}
+
     # ================== MODELO ==================
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    in_channels = x.shape[1]
-    model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
+    model = GraphSAGE(in_channels=target_in_channels, hidden_channels=256, out_channels=128).to(device)
     model_path = os.path.join(BASE_DIR, 'Modelo', model_name)
     try:
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
     except Exception as e:
-        return render(request, 'simulacion/predicciones.html', {
-            'error': f'Error al cargar el modelo {model_name}: {str(e)}'
-        })
+        return {'error': f'Error al cargar el modelo {model_name}: {str(e)}'}
 
     # ================== EMBEDDINGS GNN ==================
     with torch.no_grad():
@@ -838,8 +835,48 @@ def predicciones(request):
         'tematicas': tematicas,
         'municipios': municipios,
         'seguidores': seguidores,
-        'publicaciones': publicaciones
+        'publicaciones': publicaciones,
+        'kmeans_labels': kmeans_labels,
+        'agg_labels': agg_labels,
+        'dbscan_labels': dbscan_labels
     }
+
+    return SHARED_DATA[model_name]
+
+def predicciones(request):
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Obtener lista de modelos disponibles
+    model_dir = os.path.join(BASE_DIR, 'Modelo')
+    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+    if not model_files:
+        return render(request, 'simulacion/predicciones.html', {
+            'error': 'No se encontraron modelos en la carpeta Modelo/'
+        })
+    
+    # Seleccionar modelo por defecto (el más reciente basado en el nombre)
+    default_model = max(model_files, key=lambda x: x.split('__')[-1].replace('.pth', ''))
+    model_name = request.GET.get('model', default_model)
+    
+    # Inicializar datos del modelo
+    data = initialize_model_data(BASE_DIR, model_name, model_files)
+    if 'error' in data:
+        return render(request, 'simulacion/predicciones.html', {
+            'error': data['error']
+        })
+
+    G = data['G']
+    emprendimientos = data['emprendimientos']
+    emprendimiento_tematica = data['emprendimiento_tematica']
+    tematicas = data['tematicas']
+    municipios = data['municipios']
+    embeddings = data['embeddings']
+    node_ids = data['node_ids']
+    seguidores = data['seguidores']
+    publicaciones = data['publicaciones']
+    kmeans_labels = data['kmeans_labels']
+    agg_labels = data['agg_labels']
+    dbscan_labels = data['dbscan_labels']
 
     # ================== GRAFO FRONTEND ==================
     partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
@@ -872,7 +909,7 @@ def predicciones(request):
                 'betweenness_centrality': float(betweenness_centrality[node])
             })
     for u, v, d in G.edges(data=True):
-        if u in mapping and v in mapping:
+        if u in node_ids and v in node_ids:
             graph_data['links'].append({
                 'source': int(u),
                 'target': int(v),
@@ -908,36 +945,41 @@ def predicciones(request):
         'default_model': model_name
     })
 
-
 def predicciones_data(request):
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Obtener lista de modelos disponibles
+    model_dir = os.path.join(BASE_DIR, 'Modelo')
+    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+    if not model_files:
+        return JsonResponse({'status': 'error', 'message': 'No se encontraron modelos en la carpeta Modelo/'}, status=404)
+    
+    # Seleccionar modelo por defecto si no se proporciona
     model_name = request.GET.get('model')
     if not model_name:
-        return JsonResponse({'status': 'error', 'message': 'Parámetro model no proporcionado'}, status=400)
-    
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_name = max(model_files, key=lambda x: x.split('__')[-1].replace('.pth', ''))
+
     model_path = os.path.join(BASE_DIR, 'Modelo', model_name)
     if not os.path.exists(model_path):
         return JsonResponse({'status': 'error', 'message': f'Modelo {model_name} no encontrado'}, status=404)
 
-    if model_name not in SHARED_DATA:
-        # Necesitamos inicializar los datos para este modelo
-        # Temporalmente establecer el parámetro GET para reutilizar la lógica de predicciones
-        request.GET = request.GET.copy()
-        request.GET['model'] = model_name
-        response = predicciones(request)
-        if isinstance(response, HttpResponse):  # Error case
-            return JsonResponse({'status': 'error', 'message': 'Error al inicializar datos para el modelo'}, status=500)
-    
-    # Obtener datos desde SHARED_DATA
-    G = SHARED_DATA[model_name]['G']
-    emprendimientos = SHARED_DATA[model_name]['emprendimientos']
-    emprendimiento_tematica = SHARED_DATA[model_name]['emprendimiento_tematica']
-    tematicas = SHARED_DATA[model_name]['tematicas']
-    municipios = SHARED_DATA[model_name]['municipios']
-    embeddings = SHARED_DATA[model_name]['embeddings']
-    node_ids = SHARED_DATA[model_name]['node_ids']
-    seguidores = SHARED_DATA[model_name]['seguidores']
-    publicaciones = SHARED_DATA[model_name]['publicaciones']
+    # Inicializar datos del modelo
+    data = initialize_model_data(BASE_DIR, model_name, model_files)
+    if 'error' in data:
+        return JsonResponse({'status': 'error', 'message': data['error']}, status=500)
+
+    G = data['G']
+    emprendimientos = data['emprendimientos']
+    emprendimiento_tematica = data['emprendimiento_tematica']
+    tematicas = data['tematicas']
+    municipios = data['municipios']
+    embeddings = data['embeddings']
+    node_ids = data['node_ids']
+    seguidores = data['seguidores']
+    publicaciones = data['publicaciones']
+    kmeans_labels = data['kmeans_labels']
+    agg_labels = data['agg_labels']
+    dbscan_labels = data['dbscan_labels']
 
     # Computar clustering nuevamente (por si cambió el grafo)
     z = embeddings
