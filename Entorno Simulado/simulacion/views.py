@@ -41,6 +41,7 @@ from sklearn.metrics import (
 import math
 import pymysql
 from sqlalchemy import create_engine
+from transformers import AutoTokenizer, AutoModel
 
 
 
@@ -423,10 +424,23 @@ def ver_comentarios(request, id_publicacion):
 
 """
 
-    VALIDACION DE EMBEDDINGS
+    EMBEDDINGS
 
 """
 
+
+# Cargar modelo BETO
+tokenizer = AutoTokenizer.from_pretrained("dccuchile/bert-base-spanish-wwm-uncased")
+model = AutoModel.from_pretrained("dccuchile/bert-base-spanish-wwm-uncased")
+
+# Función para obtener embeddings de texto
+def get_text_embedding(text):
+    if not text or pd.isna(text):
+        return np.zeros(768)  # Dimensión de BETO
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
 
 def check_missing_embeddings(request):
     """Verifica si hay emprendimientos nuevos (id > 80) sin embeddings generados."""
@@ -462,7 +476,7 @@ def check_missing_embeddings(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def generar_embeddings(request):
-    """Genera archivos .txt para emprendimientos nuevos (id > 80) sin embeddings, tras verificar publicaciones y comentarios."""
+    """Genera embeddings para emprendimientos nuevos (id > 80) y los guarda en archivos .npy."""
     if request.method == 'POST':
         try:
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -507,8 +521,28 @@ def generar_embeddings(request):
                     message += f"- {emp['nombre_emprendimiento']} (falta: {', '.join(missing)})\n"
                 return JsonResponse({'status': 'error', 'message': message}, status=400)
 
-            # Si todos tienen datos, crear archivos .txt vacíos
+            # Generar embeddings para cada emprendimiento
             for emp in emprendimientos_sin_embeddings:
+                # Generar embedding de la descripción
+                descripcion = emp.descripcion if emp.descripcion else ""
+                descripcion_embedding = get_text_embedding(descripcion)
+                
+                # Generar embeddings de las publicaciones
+                publicaciones = Publicacion.objects.filter(id_emprendimiento=emp)
+                contenido_embeddings = [get_text_embedding(pub.contenido) for pub in publicaciones]
+                contenido_embeddings = np.array(contenido_embeddings) if contenido_embeddings else np.array([np.zeros(768)])
+                
+                # Generar embeddings de los comentarios
+                comentarios = Comentario.objects.filter(id_publicacion__id_emprendimiento=emp)
+                comentario_embeddings = [get_text_embedding(com.comentario) for com in comentarios]
+                comentario_embeddings = np.array(comentario_embeddings) if comentario_embeddings else np.array([np.zeros(768)])
+                
+                # Guardar embeddings en archivos .npy
+                np.save(os.path.join(EMBEDDINGS_SUBDIR, f'descripcion_{emp.id_emprendimiento}.npy'), descripcion_embedding)
+                np.save(os.path.join(EMBEDDINGS_SUBDIR, f'contenido_{emp.id_emprendimiento}.npy'), contenido_embeddings)
+                np.save(os.path.join(EMBEDDINGS_SUBDIR, f'comentario_{emp.id_emprendimiento}.npy'), comentario_embeddings)
+                
+                # Crear archivo .txt como marcador
                 embedding_file = os.path.join(EMBEDDINGS_SUBDIR, f'emprendimiento_{emp.id_emprendimiento}.txt')
                 with open(embedding_file, 'w') as f:
                     pass  # Crear archivo vacío
@@ -517,7 +551,6 @@ def generar_embeddings(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
-
 
 
 

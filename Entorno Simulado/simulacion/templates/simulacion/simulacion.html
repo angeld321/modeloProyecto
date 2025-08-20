@@ -120,6 +120,17 @@
     </div>
 </div>
 
+<!-- Modal para mostrar el loading de generación de embeddings -->
+<div id="modal-loading-embeddings" class="modal">
+    <div class="modal-content">
+        <h2>Generando Embeddings</h2>
+        <div style="text-align: center;">
+            <div class="spinner"></div>
+            <p>Tiempo transcurrido: <span id="timer">0</span> segundos</p>
+        </div>
+    </div>
+</div>
+
 <style>
     .actions {
         margin-bottom: 20px;
@@ -230,6 +241,19 @@
     #error-embeddings {
         margin-bottom: 20px;
     }
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #2776F5;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
     @media (max-width: 768px) {
         table, thead, tbody, th, td, tr {
             display: block;
@@ -267,6 +291,7 @@
 
 <script>
 let currentEmprendimientoId = null;
+let timerInterval = null;
 
 function mostrarModal(input) {
     const id = input.getAttribute('data-id');
@@ -460,6 +485,14 @@ function cerrarModalGenerarEmbeddings() {
     document.getElementById('modal-generar-embeddings').style.display = 'none';
 }
 
+function cerrarModalLoadingEmbeddings() {
+    document.getElementById('modal-loading-embeddings').style.display = 'none';
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
 function confirmarGenerarEmbeddings() {
     const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
     if (!csrftoken) {
@@ -467,9 +500,15 @@ function confirmarGenerarEmbeddings() {
         return;
     }
 
-    document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'none';
-    document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'none';
-    document.getElementById('loading-embeddings').style.display = 'block';
+    // Mostrar modal de loading y empezar el temporizador
+    document.getElementById('modal-generar-embeddings').style.display = 'none';
+    document.getElementById('modal-loading-embeddings').style.display = 'block';
+    let seconds = 0;
+    document.getElementById('timer').textContent = seconds;
+    timerInterval = setInterval(() => {
+        seconds++;
+        document.getElementById('timer').textContent = seconds;
+    }, 1000);
 
     fetch('/simulacion/generar_embeddings/', {
         method: 'POST',
@@ -480,7 +519,7 @@ function confirmarGenerarEmbeddings() {
     })
     .then(response => response.json())
     .then(data => {
-        document.getElementById('loading-embeddings').style.display = 'none';
+        cerrarModalLoadingEmbeddings();
         if (data.status === 'success') {
             alert('Embeddings generados exitosamente');
             cerrarModalGenerarEmbeddings();
@@ -492,15 +531,15 @@ function confirmarGenerarEmbeddings() {
             document.getElementById('error-embeddings').style.display = 'block';
             document.getElementById('error-embeddings').textContent = data.message;
             document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'block';
-            document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'flex';
+            document.getElementById('modal-generar-embeddings').style.display = 'block';
         }
     })
     .catch(error => {
-        document.getElementById('loading-embeddings').style.display = 'none';
+        cerrarModalLoadingEmbeddings();
         document.getElementById('error-embeddings').style.display = 'block';
         document.getElementById('error-embeddings').textContent = 'Error al generar embeddings: ' + error.message;
         document.getElementById('lista-emprendimientos-sin-embeddings').style.display = 'block';
-        document.getElementById('modal-generar-embeddings').querySelector('.modal-actions').style.display = 'flex';
+        document.getElementById('modal-generar-embeddings').style.display = 'block';
     });
 }
 </script>
