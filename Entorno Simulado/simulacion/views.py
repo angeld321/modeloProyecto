@@ -635,7 +635,7 @@ def predicciones(request):
     if model_name not in SHARED_DATA:
         SHARED_DATA[model_name] = {}
 
-    # Cargar datos
+    # ================== DATOS ==================
     emprendimientos = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimientos.csv'))
     publicaciones = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/publicaciones.csv'))
     comentarios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/comentarios.csv'))
@@ -643,11 +643,38 @@ def predicciones(request):
     emprendimiento_tematica = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/emprendimiento_tematica.csv'))
     municipios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/municipios.csv'))
     tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
-    desc_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/descripcion_embeddings.npy'))
-    cont_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/contenido_embeddings.npy'))
-    comm_embs = load_emb(os.path.join(BASE_DIR, 'Embeddings/512tk/comentario_embeddings.npy'))
+    
+    # ================== EMBEDDINGS ==================
+    # Embeddings de los 80 principales
+    desc_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/descripcion_embeddings.npy'))
+    cont_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/contenido_embeddings.npy'))
+    comm_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/comentario_embeddings.npy'))
+    
+    # Embeddings de emprendimientos nuevos
+    new_desc, new_cont, new_comm = [], [], []
+    new_ids = []
+    emb_dir = os.path.join(BASE_DIR, 'embeddings/512tk/emprendimientos')
+    for f in os.listdir(emb_dir):
+        if f.startswith("descripcion_embeddings") and f.endswith(".npy"):
+            idx = int(f.replace("descripcion_embeddings", "").replace(".npy", ""))
+            new_ids.append(idx)
+            new_desc.append(load_emb(os.path.join(emb_dir, f)))
+        elif f.startswith("contenido_embeddings") and f.endswith(".npy"):
+            new_cont.append(load_emb(os.path.join(emb_dir, f)))
+        elif f.startswith("comentario_embeddings") and f.endswith(".npy"):
+            new_comm.append(load_emb(os.path.join(emb_dir, f)))
+    
+    if new_desc:
+        new_desc = np.vstack(new_desc)
+        desc_embs = np.vstack([desc_embs, new_desc])
+    if new_cont:
+        new_cont = np.vstack(new_cont)
+        cont_embs = np.vstack([cont_embs, new_cont])
+    if new_comm:
+        new_comm = np.vstack(new_comm)
+        comm_embs = np.vstack([comm_embs, new_comm])
 
-    # Crear grafo
+    # ================== GRAFO ==================
     G = nx.Graph()
     for _, row in emprendimientos.iterrows():
         temas = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == row['id_emprendimiento']]['id_tematica'].tolist()
@@ -658,6 +685,7 @@ def predicciones(request):
                    id_alcance=row['id_alcance'],
                    tematicas=temas)
 
+    # Relaciones entre publicaciones
     for _, pub in publicaciones.iterrows():
         id_emprendimiento = pub['id_emprendimiento']
         related_emprendimientos = emprendimiento_tematica[
@@ -671,6 +699,7 @@ def predicciones(request):
                 weight = pub['n_likes'] if pd.notna(pub['n_likes']) else 0
                 G.add_edge(id_emprendimiento, rel_emp, weight=weight + 1)
 
+    # Relaciones por similitud en temáticas, municipio y alcance
     for emp1 in G.nodes:
         for emp2 in G.nodes:
             if emp1 < emp2:
@@ -683,12 +712,13 @@ def predicciones(request):
                 if weight > 0:
                     G.add_edge(emp1, emp2, weight=weight)
 
+    # Seguidores
     for _, row in seguidores.iterrows():
         id_emprendimiento = row['id_emprendimiento']
         if id_emprendimiento in G.nodes:
             G.nodes[id_emprendimiento]['seguidores'] = row['cantidad']
 
-    # Procesar características
+    # ================== FEATURES ==================
     scaler = MinMaxScaler()
     likes_por_emprendimiento = publicaciones.groupby('id_emprendimiento')['n_likes'].sum().reset_index()
     likes_por_emprendimiento.columns = ['id_emprendimiento', 'total_likes']
@@ -719,14 +749,14 @@ def predicciones(request):
         if row['id_emprendimiento'] in G.nodes:
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
 
-    # Procesar embeddings
+    # ================== PROCESAR EMBEDDINGS ==================
     W_DESC, W_PUB, W_COM = 0.5, 0.3, 0.2
     node_ids = sorted(G.nodes())
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
     for i, nid in enumerate(node_ids):
         row = emprendimientos[emprendimientos.id_emprendimiento == nid]
-        de = desc_embs[row.index[0]] if not row.empty else np.zeros(emb_dim, dtype=np.float32)
+        de = desc_embs[row.index[0]] if not row.empty and row.index[0] < len(desc_embs) else np.zeros(emb_dim, dtype=np.float32)
         p_rows = publicaciones[publicaciones.id_emprendimiento == nid]
         pe = np.nanmean(cont_embs[p_rows.index.values], axis=0) if not p_rows.empty else np.zeros(emb_dim, dtype=np.float32)
         pub_ids = p_rows.id_publicacion.values
@@ -739,7 +769,7 @@ def predicciones(request):
     for i, nid in enumerate(node_ids):
         G.nodes[nid]['text_features'] = text_feats[i]
 
-    # Combinar características
+    # ================== COMBINAR FEATURES ==================
     num_list, has_num = [], []
     for nid in node_ids:
         f = G.nodes[nid].get('features')
@@ -770,7 +800,7 @@ def predicciones(request):
     edge_attr = torch.tensor(weights, dtype=torch.float)
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=len(node_ids))
 
-    # Cargar modelo GraphSAGE
+    # ================== MODELO ==================
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     in_channels = x.shape[1]
     model = GraphSAGE(in_channels=in_channels, hidden_channels=256, out_channels=128).to(device)
@@ -784,11 +814,11 @@ def predicciones(request):
             'error': f'Error al cargar el modelo {model_name}: {str(e)}'
         })
 
-    # Generar embeddings
+    # ================== EMBEDDINGS GNN ==================
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device)).cpu().numpy()
 
-    # Computar múltiples métodos de clustering en embeddings
+    # ================== CLUSTERING ==================
     z = embeddings
     n_clusters = len(tematicas)
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
@@ -798,7 +828,7 @@ def predicciones(request):
     dbscan = DBSCAN(eps=0.5, min_samples=5)
     dbscan_labels = dbscan.fit_predict(z)
 
-    # Almacenar datos para recommend_emprendimientos
+    # ================== GUARDAR ==================
     SHARED_DATA[model_name] = {
         'G': G,
         'embeddings': embeddings,
@@ -811,14 +841,11 @@ def predicciones(request):
         'publicaciones': publicaciones
     }
 
-    # Crear datos para el frontend
+    # ================== GRAFO FRONTEND ==================
     partition = community_louvain.best_partition(G.to_undirected(), weight='weight', resolution=1.0)
     n_communities = len(set(partition.values()))
 
-    graph_data = {
-        'nodes': [],
-        'links': []
-    }
+    graph_data = {'nodes': [], 'links': []}
     degree_centrality = nx.degree_centrality(G)
     betweenness_centrality = nx.betweenness_centrality(G, weight='weight')
     for i, node in enumerate(node_ids):
@@ -880,6 +907,7 @@ def predicciones(request):
         'model_files': model_files,
         'default_model': model_name
     })
+
 
 def predicciones_data(request):
     model_name = request.GET.get('model')
