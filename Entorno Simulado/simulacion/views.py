@@ -643,51 +643,107 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
     municipios = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/municipios.csv'))
     tematicas = pd.read_csv(os.path.join(BASE_DIR, 'DATOS/tematicas.csv'))
     
+    print(f"Total emprendimientos en CSV: {len(emprendimientos)}")
+    print(f"Total publicaciones en CSV: {len(publicaciones)}")
+    print(f"Total comentarios en CSV: {len(comentarios)}")
+    
     # ================== EMBEDDINGS ==================
     desc_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/descripcion_embeddings.npy'))
     cont_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/contenido_embeddings.npy'))
     comm_embs = load_emb(os.path.join(BASE_DIR, 'embeddings/512tk/comentario_embeddings.npy'))
     
+    print(f"Dimensiones iniciales desc_embs: {desc_embs.shape}")
+    print(f"Dimensiones iniciales cont_embs: {cont_embs.shape}")
+    print(f"Dimensiones iniciales comm_embs: {comm_embs.shape}")
+    
     new_desc, new_cont, new_comm = [], [], []
-    new_ids = []
+    new_desc_ids, new_cont_ids, new_comm_ids = [], [], []
     emb_dir = os.path.join(BASE_DIR, 'embeddings/512tk/emprendimientos')
     for f in os.listdir(emb_dir):
-        if f.startswith("descripcion_embeddings") and f.endswith(".npy"):
-            idx = int(f.replace("descripcion_embeddings", "").replace(".npy", ""))
-            new_ids.append(idx)
-            new_desc.append(load_emb(os.path.join(emb_dir, f)))
-        elif f.startswith("contenido_embeddings") and f.endswith(".npy"):
-            new_cont.append(load_emb(os.path.join(emb_dir, f)))
-        elif f.startswith("comentario_embeddings") and f.endswith(".npy"):
-            new_comm.append(load_emb(os.path.join(emb_dir, f)))
+        if f.startswith("descripcion_") and f.endswith(".npy"):
+            try:
+                idx = int(f.replace("descripcion_", "").replace(".npy", ""))
+                emb = load_emb(os.path.join(emb_dir, f))
+                new_desc.append(emb)
+                new_desc_ids.append(idx)
+                print(f"Cargado embedding de descripción para id_emprendimiento {idx}")
+            except ValueError:
+                print(f"Nombre de archivo inválido: {f}")
+        elif f.startswith("contenido_") and f.endswith(".npy"):
+            try:
+                idx = int(f.replace("contenido_", "").replace(".npy", ""))
+                emb = load_emb(os.path.join(emb_dir, f))
+                new_cont.append(emb)
+                new_cont_ids.append(idx)
+                print(f"Cargado embedding de contenido para id_publicacion {idx}")
+            except ValueError:
+                print(f"Nombre de archivo inválido: {f}")
+        elif f.startswith("comentario_") and f.endswith(".npy"):
+            try:
+                idx = int(f.replace("comentario_", "").replace(".npy", ""))
+                emb = load_emb(os.path.join(emb_dir, f))
+                new_comm.append(emb)
+                new_comm_ids.append(idx)
+                print(f"Cargado embedding de comentario para id_comentario {idx}")
+            except ValueError:
+                print(f"Nombre de archivo inválido: {f}")
     
     if new_desc:
         new_desc = np.vstack(new_desc)
         desc_embs = np.vstack([desc_embs, new_desc])
+        print(f"Dimensiones desc_embs después de agregar nuevos: {desc_embs.shape}")
     if new_cont:
         new_cont = np.vstack(new_cont)
         cont_embs = np.vstack([cont_embs, new_cont])
+        print(f"Dimensiones cont_embs después de agregar nuevos: {cont_embs.shape}")
     if new_comm:
         new_comm = np.vstack(new_comm)
         comm_embs = np.vstack([comm_embs, new_comm])
+        print(f"Dimensiones comm_embs después de agregar nuevos: {comm_embs.shape}")
 
-    id_to_desc_idx = {emp_id: i for i, emp_id in enumerate(emprendimientos['id_emprendimiento'].values[:desc_embs.shape[0]])}
-    id_to_cont_idx = {pub_id: i for i, pub_id in enumerate(publicaciones['id_publicacion'].values[:cont_embs.shape[0]])}
-    id_to_comm_idx = {com_id: i for i, com_id in enumerate(comentarios['id_comentario'].values[:comm_embs.shape[0]])}
+    # Crear índices para todos los embeddings
+    id_to_desc_idx = {emp_id: i for i, emp_id in enumerate(emprendimientos['id_emprendimiento'].values[:len(desc_embs)])}
+    # Filtrar id_to_cont_idx para incluir solo IDs con embeddings válidos
+    valid_cont_ids = set(new_cont_ids) | set(publicaciones['id_publicacion'].values[:len(cont_embs)])
+    id_to_cont_idx = {pub_id: i for i, pub_id in enumerate(publicaciones['id_publicacion'].values)
+                      if pub_id in valid_cont_ids}
+    id_to_comm_idx = {com_id: i for i, com_id in enumerate(comentarios['id_comentario'].values[:len(comm_embs)])}
+
+    print(f"Total IDs en id_to_desc_idx: {len(id_to_desc_idx)}")
+    print(f"Total IDs en id_to_cont_idx: {len(id_to_cont_idx)}")
+    print(f"Total IDs en id_to_comm_idx: {len(id_to_comm_idx)}")
+    
+    # Verificar correspondencia de índices
+    for idx in new_cont_ids:
+        if idx not in id_to_cont_idx:
+            print(f"Advertencia: id_publicacion {idx} no encontrado en id_to_cont_idx")
+    for idx in new_comm_ids:
+        if idx not in id_to_comm_idx:
+            print(f"Advertencia: id_comentario {idx} no encontrado en id_to_comm_idx")
 
     # ================== GRAFO ==================
     G = nx.Graph()
+    valid_nodes = []
     for _, row in emprendimientos.iterrows():
-        temas = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == row['id_emprendimiento']]['id_tematica'].tolist()
-        G.add_node(row['id_emprendimiento'], 
-                   nombre_emprendimiento=row['nombre_emprendimiento'],
-                   descripcion=row['descripcion'] if pd.notna(row['descripcion']) else '',
-                   id_municipio_origen=row['id_municipio_origen'],
-                   id_alcance=row['id_alcance'],
-                   tematicas=temas)
+        emp_id = row['id_emprendimiento']
+        if emp_id in id_to_desc_idx:
+            temas = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == emp_id]['id_tematica'].tolist()
+            G.add_node(emp_id, 
+                       nombre_emprendimiento=row['nombre_emprendimiento'],
+                       descripcion=row['descripcion'] if pd.notna(row['descripcion']) else '',
+                       id_municipio_origen=row['id_municipio_origen'],
+                       id_alcance=row['id_alcance'],
+                       tematicas=temas)
+            valid_nodes.append(emp_id)
+        else:
+            print(f"Advertencia: id_emprendimiento {emp_id} no tiene embedding de descripción, omitido del grafo")
 
+    print(f"Total nodos válidos en el grafo: {len(valid_nodes)}")
+    
     for _, pub in publicaciones.iterrows():
         id_emprendimiento = pub['id_emprendimiento']
+        if id_emprendimiento not in valid_nodes:
+            continue
         related_emprendimientos = emprendimiento_tematica[
             emprendimiento_tematica['id_tematica'].isin(
                 emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'] == id_emprendimiento]['id_tematica']
@@ -718,31 +774,41 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
 
     # ================== FEATURES ==================
     scaler = MinMaxScaler()
-    likes_por_emprendimiento = publicaciones.groupby('id_emprendimiento')['n_likes'].sum().reset_index()
+    valid_emprendimientos = emprendimientos[emprendimientos['id_emprendimiento'].isin(valid_nodes)].copy()
+    likes_por_emprendimiento = publicaciones[publicaciones['id_emprendimiento'].isin(valid_nodes)].groupby('id_emprendimiento')['n_likes'].sum().reset_index()
     likes_por_emprendimiento.columns = ['id_emprendimiento', 'total_likes']
-    emprendimientos_features = emprendimientos.merge(likes_por_emprendimiento, on='id_emprendimiento', how='left').fillna({'total_likes': 0})
-    emprendimientos_features = emprendimientos_features.merge(seguidores[['id_emprendimiento', 'cantidad']], on='id_emprendimiento', how='left').fillna({'cantidad': 0})
+    emprendimientos_features = valid_emprendimientos.merge(likes_por_emprendimiento, on='id_emprendimiento', how='left').fillna({'total_likes': 0})
+    emprendimientos_features = emprendimientos_features.merge(
+        seguidores[seguidores['id_emprendimiento'].isin(valid_nodes)][['id_emprendimiento', 'cantidad']], 
+        on='id_emprendimiento', how='left').fillna({'cantidad': 0})
     numeric_features = scaler.fit_transform(emprendimientos_features[['total_likes', 'cantidad']])
     emprendimientos_features[['total_likes_norm', 'cantidad_norm']] = numeric_features
 
+    print(f"Total emprendimientos_features: {len(emprendimientos_features)}")
+    
     onehot_encoder_municipio = OneHotEncoder(sparse_output=False)
-    municipio_encoded = onehot_encoder_municipio.fit_transform(emprendimientos[['id_municipio_origen']])
+    municipio_encoded = onehot_encoder_municipio.fit_transform(emprendimientos_features[['id_municipio_origen']])
     municipio_encoded_df = pd.DataFrame(municipio_encoded, columns=onehot_encoder_municipio.get_feature_names_out(['id_municipio_origen']))
 
     onehot_encoder_alcance = OneHotEncoder(sparse_output=False)
-    alcance_encoded = onehot_encoder_alcance.fit_transform(emprendimientos[['id_alcance']])
+    alcance_encoded = onehot_encoder_alcance.fit_transform(emprendimientos_features[['id_alcance']])
     alcance_encoded_df = pd.DataFrame(alcance_encoded, columns=onehot_encoder_alcance.get_feature_names_out(['id_alcance']))
 
-    tematica_encoded = np.zeros((len(emprendimientos), len(tematicas)))
-    for _, row in emprendimiento_tematica.iterrows():
-        idx_emp = emprendimientos.index[emprendimientos['id_emprendimiento'] == row['id_emprendimiento']].tolist()[0]
-        idx_tem = tematicas.index[tematicas['id_tematica'] == row['id_tematica']].tolist()[0]
-        tematica_encoded[idx_emp, idx_tem] = 1
+    tematica_encoded = np.zeros((len(emprendimientos_features), len(tematicas)))
+    valid_tematica = emprendimiento_tematica[emprendimiento_tematica['id_emprendimiento'].isin(valid_nodes)]
+    for _, row in valid_tematica.iterrows():
+        idx_emp = emprendimientos_features.index[emprendimientos_features['id_emprendimiento'] == row['id_emprendimiento']].tolist()
+        if idx_emp:
+            idx_emp = idx_emp[0]
+            idx_tem = tematicas.index[tematicas['id_tematica'] == row['id_tematica']].tolist()[0]
+            tematica_encoded[idx_emp, idx_tem] = 1
     tematica_encoded_df = pd.DataFrame(tematica_encoded, columns=[f'tematica_{i}' for i in tematicas['id_tematica']])
 
     features_df = pd.concat([emprendimientos_features[['id_emprendimiento', 'total_likes_norm', 'cantidad_norm']],
                              municipio_encoded_df, alcance_encoded_df, tematica_encoded_df], axis=1)
 
+    print(f"Total filas en features_df: {len(features_df)}")
+    
     for _, row in features_df.iterrows():
         if row['id_emprendimiento'] in G.nodes:
             G.nodes[row['id_emprendimiento']]['features'] = row.drop('id_emprendimiento').values
@@ -753,17 +819,15 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
     emb_dim = desc_embs.shape[1]
     raw_text = np.zeros((len(node_ids), emb_dim), dtype=np.float32)
     for i, nid in enumerate(node_ids):
-        if nid in id_to_desc_idx:
-            de = desc_embs[id_to_desc_idx[nid]]
-        else:
-            de = np.zeros(emb_dim, dtype=np.float32)
-
+        de = desc_embs[id_to_desc_idx[nid]]
         p_rows = publicaciones[publicaciones.id_emprendimiento == nid]
         if not p_rows.empty:
             pub_embs = []
             for pid in p_rows.id_publicacion.values:
-                if pid in id_to_cont_idx:
+                if pid in id_to_cont_idx and id_to_cont_idx[pid] < len(cont_embs):
                     pub_embs.append(cont_embs[id_to_cont_idx[pid]])
+                else:
+                    print(f"No se encontró embedding válido para id_publicacion={pid}")
             pe = np.nanmean(pub_embs, axis=0) if pub_embs else np.zeros(emb_dim, dtype=np.float32)
         else:
             pe = np.zeros(emb_dim, dtype=np.float32)
@@ -773,22 +837,39 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
         if not c_rows.empty:
             comm_embs_list = []
             for cid in c_rows.id_comentario.values:
-                if cid in id_to_comm_idx:
+                if cid in id_to_comm_idx and id_to_comm_idx[cid] < len(comm_embs):
                     comm_embs_list.append(comm_embs[id_to_comm_idx[cid]])
+                else:
+                    print(f"No se encontró embedding válido para id_comentario={cid}")
             ce = np.nanmean(comm_embs_list, axis=0) if comm_embs_list else np.zeros(emb_dim, dtype=np.float32)
         else:
             ce = np.zeros(emb_dim, dtype=np.float32)
 
         raw_text[i] = W_DESC * de + W_PUB * pe + W_COM * ce
+        if nid == 81:
+            print(f"Salud Vital (id=81): desc={de[:5]}, pub={pe[:5]}, comm={ce[:5]}, combined={raw_text[i][:5]}")
 
+    print(f"Dimensiones de raw_text: {raw_text.shape}")
+    
     # Calcular dimensiones de características numéricas
-    dim_num = features_df.shape[1] - 1  # Excluye 'id_emprendimiento'
-    target_in_channels = 120  # Dimensión esperada por el modelo guardado
-    n_components_svd = max(1, target_in_channels - dim_num)  # Ajustar componentes SVD
+    dim_num = features_df.shape[1] - 1
+    target_in_channels = 120
+    n_components_svd = max(1, target_in_channels - dim_num)
 
+    print(f"dim_num: {dim_num}, n_components_svd: {n_components_svd}")
+    
     svd = TruncatedSVD(n_components=n_components_svd, random_state=42)
     text_feats = svd.fit_transform(raw_text)
+    
+    print(f"Dimensiones de text_feats: {text_feats.shape}, nodos esperados: {len(node_ids)}")
+    
+    if text_feats.shape[0] != len(node_ids):
+        return {'error': f'Desajuste de dimensiones: text_feats tiene {text_feats.shape[0]} filas, esperado {len(node_ids)}'}
+    
     for i, nid in enumerate(node_ids):
+        if i >= text_feats.shape[0]:
+            print(f"Error: Intento de acceso a índice {i} en text_feats con tamaño {text_feats.shape[0]}")
+            break
         G.nodes[nid]['text_features'] = text_feats[i]
 
     # ================== COMBINAR FEATURES ==================
@@ -798,20 +879,27 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
         if f is not None:
             num_list.append(f)
             has_num.append(nid)
-    if num_list:
-        num_mat = np.vstack(num_list)
-        scaler = MinMaxScaler().fit(num_mat)
-        scaled = scaler.transform(num_mat)
-        for j, nid in enumerate(has_num):
-            G.nodes[nid]['scaled_num'] = scaled[j]
+        else:
+            print(f"Advertencia: id_emprendimiento {nid} no tiene features, usando ceros")
+            num_list.append(np.zeros(dim_num, dtype=np.float32))
+            has_num.append(nid)
+    
+    num_mat = np.vstack(num_list)
+    scaler = MinMaxScaler().fit(num_mat)
+    scaled = scaler.transform(num_mat)
+    for j, nid in enumerate(has_num):
+        G.nodes[nid]['scaled_num'] = scaled[j]
 
     A, B = 0.4, 0.6
     for nid in node_ids:
-        num = G.nodes[nid].get('scaled_num', np.zeros_like(text_feats[0], dtype=np.float32))
+        num = G.nodes[nid].get('scaled_num', np.zeros(dim_num, dtype=np.float32))
         txt = G.nodes[nid]['text_features']
         G.nodes[nid]['combined_features'] = np.nan_to_num(np.hstack([A * num, B * txt]), nan=0.0, posinf=0.0, neginf=0.0)
 
     x = torch.tensor([G.nodes[n]['combined_features'] for n in node_ids], dtype=torch.float)
+    if x.shape[1] != target_in_channels:
+        return {'error': f'Dimensión de entrada incorrecta: se esperaba {target_in_channels}, pero se obtuvo {x.shape[1]}'}
+
     mapping = {node: idx for idx, node in enumerate(node_ids)}
     edges, weights = [], []
     for u, v, e in G.edges(data=True):
@@ -821,10 +909,6 @@ def initialize_model_data(BASE_DIR, model_name, model_files):
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
     edge_attr = torch.tensor(weights, dtype=torch.float)
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=len(node_ids))
-
-    # Verificar dimensión de entrada
-    if x.shape[1] != target_in_channels:
-        return {'error': f'Dimensión de entrada incorrecta: se esperaba {target_in_channels}, pero se obtuvo {x.shape[1]}'}
 
     # ================== MODELO ==================
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
