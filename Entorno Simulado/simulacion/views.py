@@ -197,6 +197,7 @@ def agregar_emprendimiento(request):
     try:
         nombre_emprendimiento = request.POST.get('nombre_emprendimiento')
         descripcion = request.POST.get('descripcion', '')
+        seguidores = request.POST.get('seguidores')
         id_municipio_origen = int(request.POST.get('id_municipio_origen'))
         id_alcance = int(request.POST.get('id_alcance'))
         tematicas = request.POST.getlist('tematicas')  # Lista de IDs de temáticas
@@ -210,6 +211,12 @@ def agregar_emprendimiento(request):
             return JsonResponse({'status': 'error', 'message': 'Alcance no válido'}, status=400)
         if not tematicas:
             return JsonResponse({'status': 'error', 'message': 'Debe seleccionar al menos una temática'}, status=400)
+        try:
+            seguidores = int(seguidores)
+            if seguidores < 0:
+                return JsonResponse({'status': 'error', 'message': 'El número de seguidores no puede ser negativo'}, status=400)
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'El número de seguidores debe ser un número válido'}, status=400)
 
         # Crear emprendimiento en la base de datos
         emprendimiento = Emprendimiento.objects.create(
@@ -219,10 +226,10 @@ def agregar_emprendimiento(request):
             id_alcance_id=id_alcance
         )
 
-        # Crear registro de seguidores con cantidad=0
+        # Crear registro de seguidores
         Seguidores.objects.create(
             id_emprendimiento=emprendimiento,
-            cantidad=0
+            cantidad=seguidores
         )
 
         # Crear relaciones con temáticas
@@ -236,6 +243,9 @@ def agregar_emprendimiento(request):
         # Crear o sobrescribir archivos CSV con los datos de la base de datos
         update_csv_files()
 
+        # Limpiar SHARED_DATA para forzar recarga de datos
+        SHARED_DATA.clear()
+
         return redirect('simulacion:lista_emprendimientos')
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': f'Error al agregar emprendimiento: {str(e)}'}, status=500)
@@ -248,6 +258,7 @@ def modificar_emprendimiento(request):
         id_emprendimiento = int(request.POST.get('id_emprendimiento'))
         nombre_emprendimiento = request.POST.get('nombre_emprendimiento')
         descripcion = request.POST.get('descripcion', '')
+        seguidores = request.POST.get('seguidores')
         id_municipio_origen = int(request.POST.get('id_municipio_origen'))
         id_alcance = int(request.POST.get('id_alcance'))
         tematicas = request.POST.getlist('tematicas')  # Lista de IDs de temáticas
@@ -261,6 +272,12 @@ def modificar_emprendimiento(request):
             return JsonResponse({'status': 'error', 'message': 'Alcance no válido'}, status=400)
         if not tematicas:
             return JsonResponse({'status': 'error', 'message': 'Debe seleccionar al menos una temática'}, status=400)
+        try:
+            seguidores = int(seguidores)
+            if seguidores < 0:
+                return JsonResponse({'status': 'error', 'message': 'El número de seguidores no puede ser negativo'}, status=400)
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'El número de seguidores debe ser un número válido'}, status=400)
 
         # Actualizar emprendimiento en la base de datos
         try:
@@ -274,6 +291,13 @@ def modificar_emprendimiento(request):
         emprendimiento.id_alcance_id = id_alcance
         emprendimiento.save()
 
+        # Actualizar seguidores
+        Seguidores.objects.filter(id_emprendimiento=emprendimiento).delete()
+        Seguidores.objects.create(
+            id_emprendimiento=emprendimiento,
+            cantidad=seguidores
+        )
+
         # Actualizar temáticas: eliminar las existentes y añadir las nuevas
         EmprendimientoTematica.objects.filter(id_emprendimiento=emprendimiento).delete()
         for id_tematica in tematicas:
@@ -286,10 +310,12 @@ def modificar_emprendimiento(request):
         # Crear o sobrescribir archivos CSV con los datos de la base de datos
         update_csv_files()
 
+        # Limpiar SHARED_DATA para forzar recarga de datos
+        SHARED_DATA.clear()
+
         return redirect('simulacion:lista_emprendimientos')
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': f'Error al modificar emprendimiento: {str(e)}'}, status=500)
-
 
 
 def simulacion(request):

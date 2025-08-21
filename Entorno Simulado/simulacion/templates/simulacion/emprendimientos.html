@@ -36,7 +36,6 @@
     </div>
     <div class="sort">
         <form method="GET" action="{% url 'simulacion:lista_emprendimientos' %}">
-            <!-- Mantener filtros actuales en el formulario de ordenación -->
             {% if request.GET.municipio %}
             <input type="hidden" name="municipio" value="{{ request.GET.municipio }}">
             {% endif %}
@@ -74,6 +73,8 @@
             <input type="text" id="nombre_emprendimiento" name="nombre_emprendimiento" required>
             <label for="descripcion">Descripción:</label>
             <textarea id="descripcion" name="descripcion"></textarea>
+            <label for="seguidores">Seguidores:</label>
+            <input type="number" id="seguidores" name="seguidores" min="0" value="0" required>
             <label for="id_municipio_origen">Municipio:</label>
             <select id="id_municipio_origen" name="id_municipio_origen" required>
                 <option value="">Seleccione un municipio</option>
@@ -111,6 +112,8 @@
             <input type="text" id="edit_nombre_emprendimiento" name="nombre_emprendimiento" required>
             <label for="edit_descripcion">Descripción:</label>
             <textarea id="edit_descripcion" name="descripcion"></textarea>
+            <label for="edit_seguidores">Seguidores:</label>
+            <input type="number" id="edit_seguidores" name="seguidores" min="0" required>
             <label for="edit_id_municipio_origen">Municipio:</label>
             <select id="edit_id_municipio_origen" name="id_municipio_origen" required>
                 <option value="">Seleccione un municipio</option>
@@ -145,6 +148,7 @@
             <th>Temática</th>
             <th>Municipio</th>
             <th>Alcance</th>
+            <th>Seguidores</th>
         </tr>
     </thead>
     <tbody>
@@ -157,18 +161,19 @@
             data-municipio="{{ emprendimiento.id_municipio_origen.id_municipio }}"
             data-alcance="{{ emprendimiento.id_alcance.id_alcance }}"
             data-tematicas='[{% for t in emprendimiento.tematicas.all %}"{{ t.id_tematica }}"{% if not forloop.last %}, {% endif %}{% endfor %}]'
+            data-seguidores="{% for seg in emprendimiento.seguidores_set.all %}{{ seg.cantidad }}{% empty %}0{% endfor %}"
             >
-
             <td data-label="ID">{{ emprendimiento.id_emprendimiento }}</td>
             <td data-label="Nombre">{{ emprendimiento.nombre_emprendimiento }}</td>
             <td data-label="Descripción">{{ emprendimiento.descripcion|default:"Sin descripción" }}</td>
             <td data-label="Temática">{{ emprendimiento.tematicas.all|join:", " }}</td>
             <td data-label="Municipio">{{ emprendimiento.id_municipio_origen.municipio }}</td>
             <td data-label="Alcance">{{ emprendimiento.id_alcance.tipo }}</td>
+            <td data-label="Seguidores">{% for seg in emprendimiento.seguidores_set.all %}{{ seg.cantidad }}{% empty %}0{% endfor %}</td>
         </tr>
         {% empty %}
         <tr>
-            <td colspan="6" style="text-align: center;">No hay emprendimientos disponibles.</td>
+            <td colspan="7" style="text-align: center;">No hay emprendimientos disponibles.</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -336,6 +341,7 @@
         document.getElementById('addEmprendimientoModal').style.display = 'none';
         document.getElementById('nombre_emprendimiento').value = '';
         document.getElementById('descripcion').value = '';
+        document.getElementById('seguidores').value = '0';
         document.getElementById('id_municipio_origen').value = '';
         document.getElementById('id_alcance').value = '';
         document.getElementById('tematicas').value = [];
@@ -355,11 +361,12 @@
 
     let selectedEmprendimiento = null;
 
-    function selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas) {
-        selectedEmprendimiento = { id, nombre, descripcion, municipio, alcance, tematicas };
+    function selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas, seguidores) {
+        selectedEmprendimiento = { id, nombre, descripcion, municipio, alcance, tematicas, seguidores };
         document.getElementById('edit_id_emprendimiento').value = id;
         document.getElementById('edit_nombre_emprendimiento').value = nombre;
         document.getElementById('edit_descripcion').value = descripcion;
+        document.getElementById('edit_seguidores').value = seguidores;
         document.getElementById('edit_id_municipio_origen').value = municipio;
         document.getElementById('edit_id_alcance').value = alcance;
         const tematicasSelect = document.getElementById('edit_tematicas');
@@ -383,9 +390,10 @@
         const descripcion = el.dataset.descripcion || "";
         const municipio = el.dataset.municipio;
         const alcance = el.dataset.alcance;
+        const seguidores = el.dataset.seguidores || "0";
         let tematicas = [];
         try { tematicas = JSON.parse(el.dataset.tematicas || "[]"); } catch (e) {}
-        selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas);
-  }
+        selectEmprendimiento(id, nombre, descripcion, municipio, alcance, tematicas, seguidores);
+    }
 </script>
 {% endblock %}
