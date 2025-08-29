@@ -293,6 +293,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
 <script>
 (() => {
@@ -712,14 +713,16 @@
     fillMetricsTable(js.metrics);
   }
 
-  async function compareModels() {
-    const other = compareSelect.value;
-    if (!other) {
-      if (radarChart) radarChart.destroy();
-      return;
-    }
-    const url = new URL("{% url 'simulacion:model_summary' %}", window.location.origin);
-    url.searchParams.set("model", other);
+async function compareModels() {
+  const other = compareSelect.value;
+  if (!other) {
+    if (radarChart) radarChart.destroy();
+    return;
+  }
+
+  const url = new URL("{% url 'simulacion:model_summary' %}", window.location.origin);
+  url.searchParams.set("model", other);
+  try {
     const res = await fetch(url.toString());
     const js = await res.json();
     if (js.status !== "ok") {
@@ -730,12 +733,24 @@
     const m1 = CURRENT.metrics || {};
     const m2 = js.metrics_05 || {};
 
-    const labels = ["precision","recall","f1","auc","ap","accuracy"];
-    const d1 = labels.map(k => Number(m1[k] ?? 0));
-    const d2 = labels.map(k => Number(m2[k] ?? 0));
+    const labels = ["Precision", "Recall", "F1", "AUC", "AP", "Accuracy"];
+    const keys = ["precision", "recall", "f1", "auc", "ap", "accuracy"];
+    const d1 = keys.map(k => Number(m1[k] ?? 0));
+    const d2 = keys.map(k => Number(m2[k] ?? 0));
+
+    // Calcular escala dinámica
+    const allValues = [...d1, ...d2];
+    const minValue = Math.min(...allValues.filter(v => v > 0)) * 0.95;
+    const maxValue = Math.max(...allValues) * 1.05;
 
     const ctx = $("#chart-radar");
+    if (!ctx) {
+      alert('Error: No se encontró el canvas para el gráfico');
+      return;
+    }
+
     if (radarChart) radarChart.destroy();
+
     radarChart = new Chart(ctx, {
       type: "radar",
       data: {
@@ -748,11 +763,36 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        scales: { r: { min: 0, max: 1 } },
-        plugins: { legend: { display: true } }
-      }
+        scales: {
+          r: {
+            min: minValue,
+            max: maxValue,
+            ticks: {
+              stepSize: (maxValue - minValue) / 5,
+              callback: (value) => value.toFixed(3)
+            }
+          }
+        },
+        plugins: {
+          legend: { display: true },
+          datalabels: {
+            color: '#000',
+            formatter: (value) => value.toFixed(3),
+            font: { size: 12 },
+            anchor: 'end',
+            align: 'end',
+            offset: 8,
+            clamp: true
+          }
+        }
+      },
+      plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : []
     });
+  } catch (error) {
+    console.error('Error en compareModels:', error);
+    alert('Error al renderizar el gráfico de comparación');
   }
+}
 
   function exportCSV(filename, rows) {
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
