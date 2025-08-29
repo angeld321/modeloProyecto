@@ -93,7 +93,6 @@
                 <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
                   <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
                   <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-roc" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-                  <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-roc" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
                 </div>
               </div>
             </div>
@@ -103,7 +102,6 @@
                 <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
                   <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
                   <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-pr" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-                  <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-pr" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
                 </div>
               </div>
             </div>
@@ -113,7 +111,6 @@
                 <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
                   <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
                   <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-f1" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-                  <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-f1" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
                 </div>
               </div>
             </div>
@@ -123,7 +120,6 @@
                 <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
                   <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
                   <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-loss" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-                  <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-loss" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
                 </div>
               </div>
             </div>
@@ -145,7 +141,6 @@
             <canvas id="chart-hist" style="max-height: 400px;"></canvas>
             <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
               <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-hist" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-              <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-hist" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
             </div>
           </div>
         </div>
@@ -209,7 +204,6 @@
             <canvas id="chart-radar" style="max-height: 400px;"></canvas>
             <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
               <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-radar" title="Exportar a PNG"><i class="bi bi-image"></i></button>
-              <button class="btn btn-sm btn-outline-primary export-svg" data-chart="chart-radar" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i></button>
             </div>
           </div>
         </div>
@@ -230,7 +224,6 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-primary export-png" data-chart="chart-roc-modal" title="Exportar a PNG"><i class="bi bi-image"></i> PNG</button>
-          <button class="btn btn-outline-primary export-svg" data-chart="chart-roc-modal" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i> SVG</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
         </div>
       </div>
@@ -250,7 +243,6 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-primary export-png" data-chart="chart-pr-modal" title="Exportar a PNG"><i class="bi bi-image"></i> PNG</button>
-          <button class="btn btn-outline-primary export-svg" data-chart="chart-pr-modal" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i> SVG</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
         </div>
       </div>
@@ -270,7 +262,6 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-primary export-png" data-chart="chart-f1-modal" title="Exportar a PNG"><i class="bi bi-image"></i> PNG</button>
-          <button class="btn btn-outline-primary export-svg" data-chart="chart-f1-modal" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i> SVG</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
         </div>
       </div>
@@ -290,7 +281,6 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-primary export-png" data-chart="chart-loss-modal" title="Exportar a PNG"><i class="bi bi-image"></i> PNG</button>
-          <button class="btn btn-outline-primary export-svg" data-chart="chart-loss-modal" title="Exportar a SVG"><i class="bi bi-filetype-svg"></i> SVG</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
         </div>
       </div>
@@ -301,8 +291,8 @@
 <!-- Librerías -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 
 <script>
 (() => {
@@ -499,36 +489,39 @@
     if (canvasId === "chart-loss" && lossChart) lossChart.destroy();
     if (canvasId === "chart-loss-modal" && lossModalChart) lossModalChart.destroy();
     console.log("Loss Data:", lossData);
-    if (!lossData.epochs || !lossData.values || lossData.epochs.length === 0 || lossData.values.length === 0) {
+    if (!lossData || !lossData.epochs || !lossData.values || lossData.epochs.length === 0 || lossData.values.length === 0) {
       console.warn("Loss data is empty or invalid");
       return;
     }
-    const chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: lossData.epochs,
-        datasets: [{
-          label: "Pérdida de Entrenamiento",
-          data: lossData.values,
-          borderColor: 'red',
-          fill: false,
-          pointRadius: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { title: { display: true, text: "Época" } },
-          y: { title: { display: true, text: "Loss" }, beginAtZero: true }
+    setTimeout(() => {
+      const chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: lossData.epochs,
+          datasets: [{
+            label: "Pérdida de Entrenamiento",
+            data: lossData.values,
+            borderColor: 'red',
+            fill: false,
+            pointRadius: 0
+          }]
         },
-        plugins: { legend: { display: true } }
-      }
-    });
-    if (canvasId === "chart-loss") lossChart = chart;
-    if (canvasId === "chart-loss-modal") lossModalChart = chart;
-    ctx.style.width = '100%';
-    ctx.style.height = canvasId === "chart-loss-modal" ? '600px' : '400px';
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          scales: {
+            x: { title: { display: true, text: "Época" } },
+            y: { title: { display: true, text: "Loss" }, beginAtZero: true }
+          },
+          plugins: { legend: { display: true } }
+        }
+      });
+      if (canvasId === "chart-loss") lossChart = chart;
+      if (canvasId === "chart-loss-modal") lossModalChart = chart;
+      ctx.style.width = '100%';
+      ctx.style.height = canvasId === "chart-loss-modal" ? '600px' : '400px';
+      if (chart) chart.update(); // Forzar actualización del lienzo
+    }, 0);
   }
 
   function drawHist(hist) {
@@ -669,39 +662,6 @@
     });
   }
 
-  function exportToSVG(canvasId) {
-    const canvas = $(`#${canvasId}`);
-    if (!canvas) return alert("Gráfica no encontrada");
-
-    html2canvas(canvas, { backgroundColor: '#ffffff' }).then(renderedCanvas => {
-      const imgData = renderedCanvas.toDataURL('image/png');
-      const width = canvas.width || 800; // Valor por defecto si no está definido
-      const height = canvas.height || (canvasId.includes('modal') ? 600 : 400); // Ajustar altura según modal o no
-
-      // Crear un SVG válido con la imagen incrustada
-      const svgContent = `
-        <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-        <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-          <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
-          <image x="0" y="0" width="${width}" height="${height}" href="${imgData}"/>
-        </svg>
-      `;
-
-      const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${canvasId}.svg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }).catch(err => {
-      console.error('Error al exportar a SVG:', err);
-      alert('Error al exportar la gráfica a SVG');
-    });
-  }
-
   async function fetchData(modelName) {
     showLoader(true);
     const url = new URL("{% url 'simulacion:evaluacion_data' %}", window.location.origin);
@@ -796,7 +756,7 @@
 
   function exportCSV(filename, rows) {
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], {type: "text/csv;charset=utf-8;"});
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = filename;
@@ -855,13 +815,6 @@
     btn.addEventListener('click', () => {
       const canvasId = btn.getAttribute('data-chart');
       exportToPNG(canvasId);
-    });
-  });
-
-  $$('.export-svg').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const canvasId = btn.getAttribute('data-chart');
-      exportToSVG(canvasId);
     });
   });
 
