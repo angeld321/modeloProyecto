@@ -200,9 +200,10 @@
               {% endfor %}
             </select>
           </div>
-          <div class="border rounded p-3 bg-white shadow-sm position-relative">
+          <div class="border rounded p-3 bg-white shadow-sm position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#radarModal">
             <canvas id="chart-radar" style="max-height: 400px;"></canvas>
             <div class="position-absolute top-0 end-0 p-2 d-flex gap-2">
+              <i class="bi bi-fullscreen text-muted" title="Ver en pantalla completa"></i>
               <button class="btn btn-sm btn-outline-primary export-png" data-chart="chart-radar" title="Exportar a PNG"><i class="bi bi-image"></i></button>
             </div>
           </div>
@@ -286,17 +287,43 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal para Gráfico de Radar -->
+  <div class="modal fade" id="radarModal" tabindex="-1" aria-labelledby="radarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="radarModalLabel">Comparación de Modelos</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <canvas id="chart-radar-modal" style="max-height: 600px; width: 100%;"></canvas>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-primary export-png" data-chart="chart-radar-modal" title="Exportar a PNG"><i class="bi bi-image"></i> PNG</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Librerías -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
 <script>
 (() => {
+  // Registrar el plugin ChartDataLabels
+  if (typeof ChartDataLabels !== 'undefined') {
+    Chart.register(ChartDataLabels);
+  } else {
+    console.error('ChartDataLabels no está definido');
+  }
+
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
 
@@ -316,7 +343,7 @@
   const thresholdLabel = $("#threshold-label");
 
   // Charts
-  let rocChart, prChart, f1Chart, lossChart, histChart, radarChart;
+  let rocChart, prChart, f1Chart, lossChart, histChart, radarChart, radarModalChart;
   let rocModalChart, prModalChart, f1ModalChart, lossModalChart;
 
   // Mapa de charts para acceso fácil
@@ -330,7 +357,8 @@
     'chart-roc-modal': () => rocModalChart,
     'chart-pr-modal': () => prModalChart,
     'chart-f1-modal': () => f1ModalChart,
-    'chart-loss-modal': () => lossModalChart
+    'chart-loss-modal': () => lossModalChart,
+    'chart-radar-modal': () => radarModalChart
   };
 
   // Estado global actual
@@ -342,7 +370,8 @@
     roc: null,
     pr: null,
     f1_history: null,
-    loss_history: null
+    loss_history: null,
+    radar_data: null // Almacenar datos del radar para el modal
   };
 
   function showLoader(flag) {
@@ -366,7 +395,6 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-roc" && rocChart) rocChart.destroy();
     if (canvasId === "chart-roc-modal" && rocModalChart) rocModalChart.destroy();
-    console.log("ROC Data:", rocData);
     const chart = new Chart(ctx, {
       type: "line",
       data: {
@@ -383,11 +411,28 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { title: { display: true, text: "False Positive Rate" }, min: 0, max: 1 },
-          y: { title: { display: true, text: "True Positive Rate" }, min: 0, max: 1 }
+          x: { 
+            title: { display: true, text: "False Positive Rate", color: '#000000' },
+            min: 0, 
+            max: 1,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          },
+          y: { 
+            title: { display: true, text: "True Positive Rate", color: '#000000' },
+            min: 0, 
+            max: 1,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          }
         },
         plugins: {
-          legend: { display: true }
+          legend: { 
+            display: true,
+            labels: { color: '#000000' }
+          }
         }
       }
     });
@@ -401,7 +446,6 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-pr" && prChart) prChart.destroy();
     if (canvasId === "chart-pr-modal" && prModalChart) prModalChart.destroy();
-    console.log("PR Data:", prData);
     if (!prData.recall || !prData.precision || prData.recall.length === 0 || prData.precision.length === 0) {
       console.warn("PR curve data is empty or invalid");
       return;
@@ -428,18 +472,28 @@
         scales: {
           x: { 
             type: 'linear',
-            title: { display: true, text: "Recall" },
+            title: { display: true, text: "Recall", color: '#000000' },
             min: 0,
-            max: 1
+            max: 1,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
           },
           y: { 
-            title: { display: true, text: "Precision" },
+            title: { display: true, text: "Precision", color: '#000000' },
             min: 0,
-            max: 1
+            max: 1,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
           }
         },
-        plugins: { legend: { display: true } },
-        devicePixelRatio: 1
+        plugins: { 
+          legend: { 
+            display: true,
+            labels: { color: '#000000' }
+          }
+        }
       }
     });
     if (canvasId === "chart-pr") prChart = chart;
@@ -452,7 +506,6 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-f1" && f1Chart) f1Chart.destroy();
     if (canvasId === "chart-f1-modal" && f1ModalChart) f1ModalChart.destroy();
-    console.log("F1-Score Data:", f1Data);
     if (!f1Data.epochs || !f1Data.values || f1Data.epochs.length === 0 || f1Data.values.length === 0) {
       console.warn("F1-Score data is empty or invalid");
       return;
@@ -473,10 +526,27 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { title: { display: true, text: "Época" } },
-          y: { title: { display: true, text: "F1-Score" }, min: 0, max: 1 }
+          x: { 
+            title: { display: true, text: "Época", color: '#000000' },
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          },
+          y: { 
+            title: { display: true, text: "F1-Score", color: '#000000' },
+            min: 0, 
+            max: 1,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          }
         },
-        plugins: { legend: { display: true } }
+        plugins: { 
+          legend: { 
+            display: true,
+            labels: { color: '#000000' }
+          }
+        }
       }
     });
     if (canvasId === "chart-f1") f1Chart = chart;
@@ -489,46 +559,57 @@
     const ctx = $(`#${canvasId}`);
     if (canvasId === "chart-loss" && lossChart) lossChart.destroy();
     if (canvasId === "chart-loss-modal" && lossModalChart) lossModalChart.destroy();
-    console.log("Loss Data:", lossData);
     if (!lossData || !lossData.epochs || !lossData.values || lossData.epochs.length === 0 || lossData.values.length === 0) {
       console.warn("Loss data is empty or invalid");
       return;
     }
-    setTimeout(() => {
-      const chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: lossData.epochs,
-          datasets: [{
-            label: "Pérdida de Entrenamiento",
-            data: lossData.values,
-            borderColor: 'red',
-            fill: false,
-            pointRadius: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: true,
-          scales: {
-            x: { title: { display: true, text: "Época" } },
-            y: { title: { display: true, text: "Loss" }, beginAtZero: true }
+    const chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: lossData.epochs,
+        datasets: [{
+          label: "Pérdida de Entrenamiento",
+          data: lossData.values,
+          borderColor: 'red',
+          fill: false,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          x: { 
+            title: { display: true, text: "Época", color: '#000000' },
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
           },
-          plugins: { legend: { display: true } }
+          y: { 
+            title: { display: true, text: "Loss", color: '#000000' },
+            beginAtZero: true,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          }
+        },
+        plugins: { 
+          legend: { 
+            display: true,
+            labels: { color: '#000000' }
+          }
         }
-      });
-      if (canvasId === "chart-loss") lossChart = chart;
-      if (canvasId === "chart-loss-modal") lossModalChart = chart;
-      ctx.style.width = '100%';
-      ctx.style.height = canvasId === "chart-loss-modal" ? '600px' : '400px';
-      if (chart) chart.update(); // Forzar actualización del lienzo
-    }, 0);
+      }
+    });
+    if (canvasId === "chart-loss") lossChart = chart;
+    if (canvasId === "chart-loss-modal") lossModalChart = chart;
+    ctx.style.width = '100%';
+    ctx.style.height = canvasId === "chart-loss-modal" ? '600px' : '400px';
   }
 
   function drawHist(hist) {
     const ctx = $("#chart-hist");
     if (histChart) histChart.destroy();
-    console.log("Histogram Data:", hist);
     histChart = new Chart(ctx, {
       type: "bar",
       data: {
@@ -546,15 +627,87 @@
         maintainAspectRatio: true,
         animation: false,
         scales: {
-          x: { title: { display: true, text: "Probabilidad" } },
-          y: { title: { display: true, text: "Frecuencia" }, beginAtZero: true }
+          x: { 
+            title: { display: true, text: "Probabilidad", color: '#000000' },
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          },
+          y: { 
+            title: { display: true, text: "Frecuencia", color: '#000000' },
+            beginAtZero: true,
+            ticks: { color: '#000000' },
+            grid: { color: '#000000' },
+            border: { color: '#000000' }
+          }
         },
-        plugins: { legend: { display: false } },
-        devicePixelRatio: 1
+        plugins: { 
+          legend: { 
+            display: false
+          }
+        }
       }
     });
     ctx.style.width = '100%';
     ctx.style.height = '400px';
+  }
+
+  function drawRadar(data, canvasId = "chart-radar") {
+    const ctx = $(`#${canvasId}`);
+    if (canvasId === "chart-radar" && radarChart) radarChart.destroy();
+    if (canvasId === "chart-radar-modal" && radarModalChart) radarModalChart.destroy();
+
+    const labels = ["Precision", "Recall", "F1", "AUC", "AP", "Accuracy"];
+    const allValues = [...data.datasets[0].data, ...data.datasets[1].data];
+    const minValue = Math.min(...allValues.filter(v => v > 0)) * 0.95;
+    const maxValue = Math.max(...allValues) * 1.05;
+
+    const chart = new Chart(ctx, {
+      type: "radar",
+      data: {
+        labels,
+        datasets: data.datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            min: minValue,
+            max: maxValue,
+            ticks: {
+              stepSize: (maxValue - minValue) / 5,
+              callback: (value) => value.toFixed(3),
+              color: '#000000'
+            },
+            grid: { color: '#000000' },
+            pointLabels: { color: '#000000', font: { size: 12 } },
+            angleLines: { color: '#000000' }
+          }
+        },
+        plugins: {
+          legend: { 
+            display: true,
+            labels: { color: '#000000' }
+          },
+          datalabels: {
+            color: '#000000',
+            formatter: (value) => value.toFixed(3),
+            font: { size: 12 },
+            anchor: 'end',
+            align: 'end',
+            offset: 8,
+            clamp: true
+          }
+        }
+      },
+      plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : []
+    });
+
+    if (canvasId === "chart-radar") radarChart = chart;
+    if (canvasId === "chart-radar-modal") radarModalChart = chart;
+    ctx.style.width = '100%';
+    ctx.style.height = canvasId === "chart-radar-modal" ? '600px' : '400px';
   }
 
   function fillErrorsTable(errors) {
@@ -650,9 +803,12 @@
   function exportToPNG(canvasId) {
     const canvas = $(`#${canvasId}`);
     if (!canvas) return alert("Gráfica no encontrada");
-    html2canvas(canvas, { backgroundColor: '#ffffff' }).then(canvas => {
+    html2canvas(canvas, { 
+      backgroundColor: '#ffffff',
+      scale: 2 // Aumentar resolución para mejor calidad
+    }).then(canvas => {
       const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png');
+      link.href = canvas.toDataURL('image/png', 1.0); // Calidad máxima
       link.download = `${canvasId}.png`;
       document.body.appendChild(link);
       link.click();
@@ -713,86 +869,44 @@
     fillMetricsTable(js.metrics);
   }
 
-async function compareModels() {
-  const other = compareSelect.value;
-  if (!other) {
-    if (radarChart) radarChart.destroy();
-    return;
-  }
-
-  const url = new URL("{% url 'simulacion:model_summary' %}", window.location.origin);
-  url.searchParams.set("model", other);
-  try {
-    const res = await fetch(url.toString());
-    const js = await res.json();
-    if (js.status !== "ok") {
-      alert(js.message || "No se pudo comparar");
+  async function compareModels() {
+    const other = compareSelect.value;
+    if (!other) {
+      if (radarChart) radarChart.destroy();
       return;
     }
 
-    const m1 = CURRENT.metrics || {};
-    const m2 = js.metrics_05 || {};
+    const url = new URL("{% url 'simulacion:model_summary' %}", window.location.origin);
+    url.searchParams.set("model", other);
+    try {
+      const res = await fetch(url.toString());
+      const js = await res.json();
+      if (js.status !== "ok") {
+        alert(js.message || "No se pudo comparar");
+        return;
+      }
 
-    const labels = ["Precision", "Recall", "F1", "AUC", "AP", "Accuracy"];
-    const keys = ["precision", "recall", "f1", "auc", "ap", "accuracy"];
-    const d1 = keys.map(k => Number(m1[k] ?? 0));
-    const d2 = keys.map(k => Number(m2[k] ?? 0));
+      const m1 = CURRENT.metrics || {};
+      const m2 = js.metrics_05 || {};
 
-    // Calcular escala dinámica
-    const allValues = [...d1, ...d2];
-    const minValue = Math.min(...allValues.filter(v => v > 0)) * 0.95;
-    const maxValue = Math.max(...allValues) * 1.05;
+      const keys = ["precision", "recall", "f1", "auc", "ap", "accuracy"];
+      const d1 = keys.map(k => Number(m1[k] ?? 0));
+      const d2 = keys.map(k => Number(m2[k] ?? 0));
 
-    const ctx = $("#chart-radar");
-    if (!ctx) {
-      alert('Error: No se encontró el canvas para el gráfico');
-      return;
-    }
-
-    if (radarChart) radarChart.destroy();
-
-    radarChart = new Chart(ctx, {
-      type: "radar",
-      data: {
-        labels,
+      // Almacenar datos del radar para el modal
+      CURRENT.radar_data = {
         datasets: [
           { label: modelSelect.value, data: d1, borderColor: 'blue', backgroundColor: 'rgba(0, 0, 255, 0.1)' },
           { label: js.model_name, data: d2, borderColor: 'red', backgroundColor: 'rgba(255, 0, 0, 0.1)' }
         ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          r: {
-            min: minValue,
-            max: maxValue,
-            ticks: {
-              stepSize: (maxValue - minValue) / 5,
-              callback: (value) => value.toFixed(3)
-            }
-          }
-        },
-        plugins: {
-          legend: { display: true },
-          datalabels: {
-            color: '#000',
-            formatter: (value) => value.toFixed(3),
-            font: { size: 12 },
-            anchor: 'end',
-            align: 'end',
-            offset: 8,
-            clamp: true
-          }
-        }
-      },
-      plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : []
-    });
-  } catch (error) {
-    console.error('Error en compareModels:', error);
-    alert('Error al renderizar el gráfico de comparación');
+      };
+
+      drawRadar(CURRENT.radar_data);
+    } catch (error) {
+      console.error('Error en compareModels:', error);
+      alert('Error al renderizar el gráfico de comparación');
+    }
   }
-}
 
   function exportCSV(filename, rows) {
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
@@ -810,6 +924,7 @@ async function compareModels() {
       updateAll(data);
       if (radarChart) radarChart.destroy();
       compareSelect.value = "";
+      CURRENT.radar_data = null; // Limpiar datos del radar
     } catch (e) {
       showLoader(false);
       alert(e.message || e);
@@ -833,6 +948,10 @@ async function compareModels() {
     if (CURRENT.loss_history) drawLoss(CURRENT.loss_history, "chart-loss-modal");
   });
 
+  $("#radarModal").addEventListener("shown.bs.modal", () => {
+    if (CURRENT.radar_data) drawRadar(CURRENT.radar_data, "chart-radar-modal");
+  });
+
   // Destruir gráficas de modales cuando se cierran para liberar memoria
   $("#rocModal").addEventListener("hidden.bs.modal", () => {
     if (rocModalChart) rocModalChart.destroy();
@@ -848,6 +967,10 @@ async function compareModels() {
 
   $("#lossModal").addEventListener("hidden.bs.modal", () => {
     if (lossModalChart) lossModalChart.destroy();
+  });
+
+  $("#radarModal").addEventListener("hidden.bs.modal", () => {
+    if (radarModalChart) radarModalChart.destroy();
   });
 
   // Eventos para botones de exportación
