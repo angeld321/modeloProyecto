@@ -1,4 +1,4 @@
-id_seguidores,id_emprendimiento,cantidad
+﻿id_seguidores,id_emprendimiento,cantidad
 1,1,312
 2,2,387
 3,3,173
@@ -61,7 +61,7 @@ id_seguidores,id_emprendimiento,cantidad
 60,60,258
 61,61,412
 62,62,298
-63,63,231
+63,63,267
 64,64,387
 65,65,342
 66,66,398
@@ -79,3 +79,5 @@ id_seguidores,id_emprendimiento,cantidad
 78,78,315
 79,79,187
 80,80,423
+82,81,200
+89,82,279
